@@ -33,8 +33,9 @@ pip install -r requirements.txt
 ## Pathology Article Retrieval
 
 The `pathology_pipeline` module helps curate pathology-related articles from
-PubMed Central. It searches terms between 2000 and 2023 using the Entrez API,
-downloads the corresponding XML files, and extracts article text.
+PubMed Central. It searches terms between 2000 and 2023 using the Entrez API
+and reports how many articles match before downloading. The XML files are then
+downloaded and parsed to extract article text.
 
 ```python
 from pathlib import Path
@@ -42,7 +43,7 @@ from pmc15_pipeline import pathology_pipeline
 
 keywords = ["pathology", "histopathology", "whole-slide image", "H&E"]
 
-# Search for PMCIDs
+# Search for PMCIDs. The number of matching articles will be printed.
 pmcids = pathology_pipeline.search_pmcids(keywords)
 
 # Download articles and extract text

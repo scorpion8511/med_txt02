@@ -68,6 +68,8 @@ def search_pmcids(
             handle.close()
             pmcids.update(batch.get("IdList", []))
 
+    print(f"Found {len(pmcids)} pathology articles")
+
     return pmcids
 
 
@@ -98,7 +100,10 @@ def download_articles(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    for pmcid in tqdm(list(pmcids)):
+    pmcid_list = list(pmcids)
+    print(f"Preparing to download {len(pmcid_list)} pathology articles")
+
+    for pmcid in tqdm(pmcid_list):
         file_path = output_dir / f"{pmcid}.nxml"
         if file_path.exists():
             continue
