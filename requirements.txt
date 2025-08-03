@@ -3,7 +3,8 @@ ipykernel
 ipython
 matplotlib
 opencv-python==4.8.0.74
-PILLOW
+biopython
+Pillow
 pytest
 requests
 rich==10.12.0
