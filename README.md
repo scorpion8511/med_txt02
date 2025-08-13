@@ -30,6 +30,20 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Counting Articles by Keyword
+
+After generating `pubmed_parsed_data.json`, you can count how many articles
+mention specific topics in their figure captions:
+
+```python
+from pmc15_pipeline.data import count_articles_with_keywords
+
+count_articles_with_keywords()
+```
+
+Provide your own list of terms with the `keywords` argument if you want to
+search for different phrases.
+
 ## Reference
 ```bibtex
 @article{zhang2024biomedclip,

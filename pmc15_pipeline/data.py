@@ -263,3 +263,38 @@ def generate_pmc15_pipeline_outputs(
                 f.write(json.dumps(article) + "\n")
 
     print(f"Processed {idx+1} files")
+
+
+def count_articles_with_keywords(
+    dataset_path: Path = repo_root / "_results" / "data" / "pubmed_parsed_data.json",
+    keywords: list[str] | None = None,
+) -> dict[str, int]:
+    """Count articles whose figure captions mention given keywords.
+
+    Args:
+        dataset_path: Path to the JSONL file produced by the pipeline.
+        keywords: List of case-insensitive keywords to search for.
+
+    Returns:
+        Dictionary mapping each keyword to the number of matching articles.
+    """
+
+    if keywords is None:
+        keywords = ["pathology", "whole slide image", "H&E"]
+
+    keyword_counts = {kw.lower(): 0 for kw in keywords}
+
+    with dataset_path.open("r") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            article = json.loads(line)
+            captions = " ".join(
+                fig.get("fig_caption", "") for fig in article.get("figures", [])
+            ).lower()
+            for kw in keyword_counts:
+                if kw in captions:
+                    keyword_counts[kw] += 1
+
+    print("Article counts:", keyword_counts)
+    return keyword_counts
