@@ -14,13 +14,42 @@ from .utils import fs_utils
 
 repo_root = fs_utils.get_repo_root_path()
 
-DOMAIN_KEYWORDS = {
+# Default set of domain keywords; these act as a fallback if a glossary
+# cannot be fetched from a remote source.
+DEFAULT_DOMAIN_KEYWORDS = {
     "pathology": ["pathology", "whole slide image", "H&E"],
     "x-ray": ["x-ray"],
     "endoscopy": ["endoscopy", "gastrology"],
     "ultra": ["ultrasound"],
     "mri": ["MRI"],
 }
+
+
+def load_domain_keywords(url: str | None = None) -> dict[str, list[str]]:
+    """Load domain keywords from ``url`` or fall back to defaults.
+
+    ``url`` should point to a JSON object mapping domain names to a list of
+    keywords. If the download fails or the mapping is incomplete, the
+    hard-coded defaults are used instead.
+    """
+
+    keywords = DEFAULT_DOMAIN_KEYWORDS.copy()
+
+    if url:
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            for domain in keywords:
+                if isinstance(data.get(domain), list):
+                    keywords[domain] = data[domain]
+        except requests.RequestException as err:  # pragma: no cover - network
+            print(f"Failed to fetch domain glossary from {url}: {err}")
+
+    return keywords
+
+
+DOMAIN_KEYWORDS = load_domain_keywords()
 DEFAULT_KEYWORDS = [kw for kws in DOMAIN_KEYWORDS.values() for kw in kws]
 DOMAIN_KEYWORDS_LOWER = {
     domain: [kw.lower() for kw in keywords]
@@ -188,11 +217,19 @@ def generate_pmc15_pipeline_outputs(
         repo_root / "_results" / "data" / "pubmed_parsed_data.json"
     ),
     keywords: list[str] | None = None,
+    glossary_url: str | None = None,
 ):
 
     # input - path to .nxml file for each article in the article package
     # output - json object with pmid, pmc id, location (path to article package in storage blobs), figures - list of figure objects which include inline references (mentions of figure throughout the article), caption for the figure, id, label, graphic_ref (filepath to figure jpg in storage blobs), pair_id (a unique id to identify each figure in the article, using pmid + figure_id)
-    keywords_lower = [kw.lower() for kw in (keywords or DEFAULT_KEYWORDS)]
+    domain_keywords = load_domain_keywords(glossary_url)
+    keywords_lower = [
+        kw.lower() for kw in (keywords or [kw for kws in domain_keywords.values() for kw in kws])
+    ]
+    domain_keywords_lower = {
+        domain: [kw.lower() for kw in kws]
+        for domain, kws in domain_keywords.items()
+    }
 
     def parse_single_pubmed_file(nxml_path: Path):
         print(nxml_path)
@@ -250,7 +287,7 @@ def generate_pmc15_pipeline_outputs(
 
                 domains = [
                     domain
-                    for domain, kws in DOMAIN_KEYWORDS_LOWER.items()
+                    for domain, kws in domain_keywords_lower.items()
                     if any(kw in caption_lower for kw in kws)
                 ]
                 if not domains:
@@ -302,14 +339,15 @@ def generate_pmc15_pipeline_outputs(
 def count_articles_with_keywords(
     dataset_path: Path = repo_root / "_results" / "data" / "pubmed_parsed_data.json",
     keywords: list[str] | None = None,
-    domain_keywords: dict[str, list[str]] | None = DOMAIN_KEYWORDS,
+    domain_keywords: dict[str, list[str]] | None = None,
+    glossary_url: str | None = None,
 ) -> dict[str, int]:
     """Count articles whose figure captions mention given keywords or domains."""
 
     if keywords is not None:
         keyword_counts = {kw.lower(): 0 for kw in keywords}
     else:
-        domain_keywords = domain_keywords or DOMAIN_KEYWORDS
+        domain_keywords = domain_keywords or load_domain_keywords(glossary_url)
         domain_keywords_lower = {
             domain: [kw.lower() for kw in kws]
             for domain, kws in domain_keywords.items()

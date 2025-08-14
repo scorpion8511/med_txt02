@@ -44,6 +44,8 @@ these domain keywords and labels each figure with the matched domain(s):
 
 Each figure written to `pubmed_parsed_data.json` includes a `domains` array, and
 the enclosing article lists all domains found across its figures.
+You can also fetch the domain keyword mapping from a remote JSON glossary by
+passing its URL with `glossary_url`.
 
 ```python
 from pmc15_pipeline.data import generate_pmc15_pipeline_outputs
@@ -52,6 +54,9 @@ generate_pmc15_pipeline_outputs()  # Use defaults shown above
 
 # Or provide your own list of keywords
 # generate_pmc15_pipeline_outputs(keywords=["custom term"])
+
+# Pull domain keywords from a remote glossary
+# generate_pmc15_pipeline_outputs(glossary_url="https://example.com/domain_glossary.json")
 ```
 
 ## Counting Articles by Domain
@@ -63,6 +68,9 @@ mention each domain in their figure captions:
 from pmc15_pipeline.data import count_articles_with_keywords
 
 count_articles_with_keywords()
+
+# Use the same remote glossary as above
+# count_articles_with_keywords(glossary_url="https://example.com/domain_glossary.json")
 ```
 
 Provide your own list of terms with the `keywords` argument if you want to
