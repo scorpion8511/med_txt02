@@ -248,8 +248,13 @@ def generate_pmc15_pipeline_outputs(
 
     # input - path to .nxml file for each article in the article package
     # output - json object with pmid, pmc id, location (path to article package in storage blobs), figures - list of figure objects which include inline references (mentions of figure throughout the article), caption for the figure, id, label, graphic_ref (filepath to figure jpg in storage blobs), pair_id (a unique id to identify each figure in the article, using pmid + figure_id)
+    # Ensure destination directories exist before any processing occurs
+    output_file_path.parent.mkdir(parents=True, exist_ok=True)
+    if domain_caption_output:
+        Path(domain_caption_output).parent.mkdir(parents=True, exist_ok=True)
+
     domain_keywords = load_domain_keywords(glossary_urls)
-    keywords_lower = [kw.lower() for kw in (keywords or DEFAULT_KEYWORDS)]
+    keywords_lower = {kw.lower() for kw in (keywords or DEFAULT_KEYWORDS)}
     domain_keywords_lower = {
         domain: [kw.lower() for kw in kws]
         for domain, kws in domain_keywords.items()
@@ -349,8 +354,10 @@ def generate_pmc15_pipeline_outputs(
     with output_file_path.open("w+") as f, (
         domain_caption_output.open("w") if domain_caption_output else contextlib.nullcontext()
     ) as cap_f:
-        for idx, nxml_file in enumerate(decompressed_folder.rglob("*.nxml")):
+        processed_files = 0
+        for nxml_file in decompressed_folder.rglob("*.nxml"):
             parsed = parse_single_pubmed_file(nxml_file)
+            processed_files += 1
 
             for article in parsed:
                 for figure in article["figures"]:
@@ -366,7 +373,7 @@ def generate_pmc15_pipeline_outputs(
 
                 f.write(json.dumps(article) + "\n")
 
-    print(f"Processed {idx+1} files")
+    print(f"Processed {processed_files} files")
 
 
 def count_articles_with_keywords(

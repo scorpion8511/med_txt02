@@ -46,6 +46,9 @@ Each figure written to `pubmed_parsed_data.json` includes a `domains` array, and
 the enclosing article lists all domains found across its figures. The function
 also writes `_results/data/domain_caption_pairs.jsonl`, containing one line per
 figure-domain combination with the structure `{ "domain": "pathology", "text": "caption" }`.
+Figures lacking any of the keywords are skipped entirely, so a small sample of
+articles may yield an empty output file if none of their captions mention the
+default terms.
 You can also fetch domain keyword mappings from remote JSON glossaries by
 providing a `glossary_urls` dictionary. Each key is a domain name and each value
 is a URL returning a JSON array of keywords for that domain. Passing a single
