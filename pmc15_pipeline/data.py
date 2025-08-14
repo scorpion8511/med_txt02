@@ -25,8 +25,12 @@ DEFAULT_DOMAIN_KEYWORDS = {
     "mri": ["MRI"],
 }
 
-# Only captions containing these keywords are retained by default.
-DEFAULT_KEYWORDS = DEFAULT_DOMAIN_KEYWORDS["pathology"]
+# Only captions containing these keywords are retained by default. This list
+# combines all domain keywords so the default dataset includes figures from any
+# supported imaging modality.
+DEFAULT_KEYWORDS = [
+    kw for kws in DEFAULT_DOMAIN_KEYWORDS.values() for kw in kws
+]
 
 
 def load_domain_keywords(urls: dict[str, str] | str | None = None) -> dict[str, list[str]]:

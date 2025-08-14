@@ -34,14 +34,7 @@ pip install -r requirements.txt
 
 `generate_pmc15_pipeline_outputs` can restrict the dataset to figures whose
 captions mention specific terms. By default it keeps only captions containing
-these keywords:
-
-- "pathology"
-- "whole slide image"
-- "H&E"
-
-Figures that pass this filter are still annotated with imaging domains. The
-default domain mapping is:
+keywords from these imaging domains:
 
 - **pathology:** "pathology", "whole slide image", "H&E"
 - **x-ray:** "x-ray"
@@ -114,7 +107,7 @@ export_domain_caption_pairs()
 ## Exporting Captions with Default Keywords
 
 If you already have `pubmed_parsed_data.json` but only want the captions that
-mention the default pathology keywords, create a lightweight JSONL file:
+mention the default imaging-domain keywords, create a lightweight JSONL file:
 
 ```python
 from pmc15_pipeline.data import export_keyword_caption_pairs
