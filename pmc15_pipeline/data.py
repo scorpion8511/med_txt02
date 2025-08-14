@@ -25,6 +25,9 @@ DEFAULT_DOMAIN_KEYWORDS = {
     "mri": ["MRI"],
 }
 
+# Only captions containing these keywords are retained by default.
+DEFAULT_KEYWORDS = DEFAULT_DOMAIN_KEYWORDS["pathology"]
+
 
 def load_domain_keywords(urls: dict[str, str] | str | None = None) -> dict[str, list[str]]:
     """Load domain keywords from remote ``urls`` or fall back to defaults.
@@ -67,7 +70,6 @@ def load_domain_keywords(urls: dict[str, str] | str | None = None) -> dict[str, 
 
 
 DOMAIN_KEYWORDS = load_domain_keywords()
-DEFAULT_KEYWORDS = [kw for kws in DOMAIN_KEYWORDS.values() for kw in kws]
 DOMAIN_KEYWORDS_LOWER = {
     domain: [kw.lower() for kw in keywords]
     for domain, keywords in DOMAIN_KEYWORDS.items()
@@ -243,9 +245,7 @@ def generate_pmc15_pipeline_outputs(
     # input - path to .nxml file for each article in the article package
     # output - json object with pmid, pmc id, location (path to article package in storage blobs), figures - list of figure objects which include inline references (mentions of figure throughout the article), caption for the figure, id, label, graphic_ref (filepath to figure jpg in storage blobs), pair_id (a unique id to identify each figure in the article, using pmid + figure_id)
     domain_keywords = load_domain_keywords(glossary_urls)
-    keywords_lower = [
-        kw.lower() for kw in (keywords or [kw for kws in domain_keywords.values() for kw in kws])
-    ]
+    keywords_lower = [kw.lower() for kw in (keywords or DEFAULT_KEYWORDS)]
     domain_keywords_lower = {
         domain: [kw.lower() for kw in kws]
         for domain, kws in domain_keywords.items()
@@ -429,3 +429,30 @@ def export_domain_caption_pairs(
                     dest.write(
                         json.dumps({"domain": domain, "text": caption}) + "\n"
                     )
+
+
+def export_keyword_caption_pairs(
+    dataset_path: Path = repo_root / "_results" / "data" / "pubmed_parsed_data.json",
+    output_path: Path = repo_root
+    / "_results"
+    / "data"
+    / "keyword_caption_pairs.jsonl",
+    keywords: list[str] | None = None,
+) -> None:
+    """Write captions containing ``keywords`` to ``output_path``.
+
+    Each line of the resulting JSONL file has the structure
+    ``{"text": "caption"}``. ``keywords`` defaults to ``DEFAULT_KEYWORDS``.
+    """
+
+    keywords_lower = [kw.lower() for kw in (keywords or DEFAULT_KEYWORDS)]
+
+    with dataset_path.open("r") as src, output_path.open("w") as dest:
+        for line in src:
+            if not line.strip():
+                continue
+            article = json.loads(line)
+            for figure in article.get("figures", []):
+                caption = figure.get("fig_caption", "")
+                if any(kw in caption.lower() for kw in keywords_lower):
+                    dest.write(json.dumps({"text": caption}) + "\n")
