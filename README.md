@@ -34,30 +34,30 @@ pip install -r requirements.txt
 
 `generate_pmc15_pipeline_outputs` can restrict the dataset to figures whose
 captions mention specific terms. By default it keeps only captions containing
-"pathology", "whole slide image", "H&E", "x-ray", "MRI", "endoscopy",
-"gastrology", or "ultrasound":
+these domain keywords and labels each figure with the matched domain(s):
+
+- **pathology:** "pathology", "whole slide image", "H&E"
+- **x-ray:** "x-ray"
+- **endoscopy:** "endoscopy", "gastrology"
+- **ultra:** "ultrasound"
+- **mri:** "MRI"
+
+Each figure written to `pubmed_parsed_data.json` includes a `domains` array, and
+the enclosing article lists all domains found across its figures.
 
 ```python
 from pmc15_pipeline.data import generate_pmc15_pipeline_outputs
 
-generate_pmc15_pipeline_outputs(
-    keywords=[
-        "pathology",
-        "whole slide image",
-        "H&E",
-        "x-ray",
-        "MRI",
-        "endoscopy",
-        "gastrology",
-        "ultrasound",
-    ]
-)
+generate_pmc15_pipeline_outputs()  # Use defaults shown above
+
+# Or provide your own list of keywords
+# generate_pmc15_pipeline_outputs(keywords=["custom term"])
 ```
 
-## Counting Articles by Keyword
+## Counting Articles by Domain
 
-After generating `pubmed_parsed_data.json`, you can count how many articles
-mention specific topics in their figure captions:
+After generating `pubmed_parsed_data.json`, you can see how many articles
+mention each domain in their figure captions:
 
 ```python
 from pmc15_pipeline.data import count_articles_with_keywords
@@ -66,7 +66,7 @@ count_articles_with_keywords()
 ```
 
 Provide your own list of terms with the `keywords` argument if you want to
-search for different phrases.
+search for different phrases instead of the preset domains.
 
 ## Reference
 ```bibtex

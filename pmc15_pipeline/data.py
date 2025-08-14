@@ -13,16 +13,19 @@ from .types import PubMedFile
 from .utils import fs_utils
 
 repo_root = fs_utils.get_repo_root_path()
-DEFAULT_KEYWORDS = [
-    "pathology",
-    "whole slide image",
-    "H&E",
-    "x-ray",
-    "MRI",
-    "endoscopy",
-    "gastrology",
-    "ultrasound",
-]
+
+DOMAIN_KEYWORDS = {
+    "pathology": ["pathology", "whole slide image", "H&E"],
+    "x-ray": ["x-ray"],
+    "endoscopy": ["endoscopy", "gastrology"],
+    "ultra": ["ultrasound"],
+    "mri": ["MRI"],
+}
+DEFAULT_KEYWORDS = [kw for kws in DOMAIN_KEYWORDS.values() for kw in kws]
+DOMAIN_KEYWORDS_LOWER = {
+    domain: [kw.lower() for kw in keywords]
+    for domain, keywords in DOMAIN_KEYWORDS.items()
+}
 
 
 def download_pubmed_file_list(
@@ -241,7 +244,16 @@ def generate_pmc15_pipeline_outputs(
                     raise NotImplementedError("Inline references not implemented")
 
                 caption = str(figure_dict.get("fig_caption", ""))
-                if not any(kw in caption.lower() for kw in keywords_lower):
+                caption_lower = caption.lower()
+                if not any(kw in caption_lower for kw in keywords_lower):
+                    continue
+
+                domains = [
+                    domain
+                    for domain, kws in DOMAIN_KEYWORDS_LOWER.items()
+                    if any(kw in caption_lower for kw in kws)
+                ]
+                if not domains:
                     continue
 
                 figure_object = {
@@ -255,6 +267,7 @@ def generate_pmc15_pipeline_outputs(
                     ),  # set this to the path of the jpg image in storage blobs
                     "pair_id": str(pmid) + "_" + str(figure_dict.get("fig_id", "")),
                     "inline_references": ir_objects,  # add inline references
+                    "domains": domains,
                 }
 
                 figures.append(figure_object)
@@ -267,6 +280,7 @@ def generate_pmc15_pipeline_outputs(
                 "pmc": pmc,
                 "location": str(location),
                 "figures": figures,
+                "domains": sorted({d for fig in figures for d in fig["domains"]}),
             }
 
             return [article]
@@ -288,21 +302,19 @@ def generate_pmc15_pipeline_outputs(
 def count_articles_with_keywords(
     dataset_path: Path = repo_root / "_results" / "data" / "pubmed_parsed_data.json",
     keywords: list[str] | None = None,
+    domain_keywords: dict[str, list[str]] | None = DOMAIN_KEYWORDS,
 ) -> dict[str, int]:
-    """Count articles whose figure captions mention given keywords.
+    """Count articles whose figure captions mention given keywords or domains."""
 
-    Args:
-        dataset_path: Path to the JSONL file produced by the pipeline.
-        keywords: List of case-insensitive keywords to search for.
-
-    Returns:
-        Dictionary mapping each keyword to the number of matching articles.
-    """
-
-    if keywords is None:
-        keywords = DEFAULT_KEYWORDS
-
-    keyword_counts = {kw.lower(): 0 for kw in keywords}
+    if keywords is not None:
+        keyword_counts = {kw.lower(): 0 for kw in keywords}
+    else:
+        domain_keywords = domain_keywords or DOMAIN_KEYWORDS
+        domain_keywords_lower = {
+            domain: [kw.lower() for kw in kws]
+            for domain, kws in domain_keywords.items()
+        }
+        keyword_counts = {domain: 0 for domain in domain_keywords}
 
     with dataset_path.open("r") as f:
         for line in f:
@@ -312,9 +324,14 @@ def count_articles_with_keywords(
             captions = " ".join(
                 fig.get("fig_caption", "") for fig in article.get("figures", [])
             ).lower()
-            for kw in keyword_counts:
-                if kw in captions:
-                    keyword_counts[kw] += 1
+            if keywords is not None:
+                for kw in keyword_counts:
+                    if kw in captions:
+                        keyword_counts[kw] += 1
+            else:
+                for domain, kws in domain_keywords_lower.items():
+                    if any(kw in captions for kw in kws):
+                        keyword_counts[domain] += 1
 
     print("Article counts:", keyword_counts)
     return keyword_counts
