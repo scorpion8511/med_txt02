@@ -68,6 +68,20 @@ count_articles_with_keywords()
 Provide your own list of terms with the `keywords` argument if you want to
 search for different phrases instead of the preset domains.
 
+## Exporting Domain-Caption Pairs
+
+To create a lightweight dataset for domain classification, write one line per
+figure with its domain and caption text:
+
+```python
+from pmc15_pipeline.data import export_domain_caption_pairs
+
+export_domain_caption_pairs()
+```
+
+This produces `_results/data/domain_caption_pairs.jsonl` where each line is a
+JSON object of the form `{ "domain": "pathology", "text": "caption" }`.
+
 ## Reference
 ```bibtex
 @article{zhang2024biomedclip,

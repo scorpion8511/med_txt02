@@ -335,3 +335,30 @@ def count_articles_with_keywords(
 
     print("Article counts:", keyword_counts)
     return keyword_counts
+
+
+def export_domain_caption_pairs(
+    dataset_path: Path = repo_root / "_results" / "data" / "pubmed_parsed_data.json",
+    output_path: Path = repo_root
+    / "_results"
+    / "data"
+    / "domain_caption_pairs.jsonl",
+) -> None:
+    """Write ``{"domain": d, "text": caption}`` pairs for each figure.
+
+    One line is written for every domain assigned to a figure in
+    ``dataset_path``. Figures with multiple domains will produce multiple
+    entries with the same caption.
+    """
+
+    with dataset_path.open("r") as src, output_path.open("w") as dest:
+        for line in src:
+            if not line.strip():
+                continue
+            article = json.loads(line)
+            for figure in article.get("figures", []):
+                caption = figure.get("fig_caption", "")
+                for domain in figure.get("domains", []):
+                    dest.write(
+                        json.dumps({"domain": domain, "text": caption}) + "\n"
+                    )
