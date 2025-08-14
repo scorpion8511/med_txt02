@@ -43,7 +43,9 @@ these domain keywords and labels each figure with the matched domain(s):
 - **mri:** "MRI"
 
 Each figure written to `pubmed_parsed_data.json` includes a `domains` array, and
-the enclosing article lists all domains found across its figures.
+the enclosing article lists all domains found across its figures. The function
+also writes `_results/data/domain_caption_pairs.jsonl`, containing one line per
+figure-domain combination with the structure `{ "domain": "pathology", "text": "caption" }`.
 You can also fetch the domain keyword mapping from a remote JSON glossary by
 passing its URL with `glossary_url`.
 
@@ -81,14 +83,14 @@ search for different phrases instead of the preset domains.
 To create a lightweight dataset for domain classification, write one line per
 figure with its domain and caption text:
 
+`generate_pmc15_pipeline_outputs` writes this file automatically; if you need
+to recreate it from an existing dataset, call:
+
 ```python
 from pmc15_pipeline.data import export_domain_caption_pairs
 
 export_domain_caption_pairs()
 ```
-
-This produces `_results/data/domain_caption_pairs.jsonl` where each line is a
-JSON object of the form `{ "domain": "pathology", "text": "caption" }`.
 
 ## Reference
 ```bibtex

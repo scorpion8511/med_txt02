@@ -2,6 +2,7 @@ import json
 import tarfile
 from pathlib import Path
 from typing import Optional
+import contextlib
 
 import pubmed_parser
 import requests
@@ -218,6 +219,9 @@ def generate_pmc15_pipeline_outputs(
     ),
     keywords: list[str] | None = None,
     glossary_url: str | None = None,
+    domain_caption_output: Path | None = (
+        repo_root / "_results" / "data" / "domain_caption_pairs.jsonl"
+    ),
 ):
 
     # input - path to .nxml file for each article in the article package
@@ -322,7 +326,9 @@ def generate_pmc15_pipeline_outputs(
 
             return [article]
 
-    with output_file_path.open("w+") as f:
+    with output_file_path.open("w+") as f, (
+        domain_caption_output.open("w") if domain_caption_output else contextlib.nullcontext()
+    ) as cap_f:
         for idx, nxml_file in enumerate(decompressed_folder.rglob("*.nxml")):
             parsed = parse_single_pubmed_file(nxml_file)
 
@@ -330,6 +336,13 @@ def generate_pmc15_pipeline_outputs(
                 for figure in article["figures"]:
                     # remove inline references since we're not using them
                     figure.pop("inline_references")
+                    if cap_f:
+                        caption = figure.get("fig_caption", "")
+                        for domain in figure.get("domains", []):
+                            cap_f.write(
+                                json.dumps({"domain": domain, "text": caption})
+                                + "\n"
+                            )
 
                 f.write(json.dumps(article) + "\n")
 
