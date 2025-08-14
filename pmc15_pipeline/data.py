@@ -13,6 +13,7 @@ from .types import PubMedFile
 from .utils import fs_utils
 
 repo_root = fs_utils.get_repo_root_path()
+DEFAULT_KEYWORDS = ["pathology", "whole slide image", "H&E"]
 
 
 def download_pubmed_file_list(
@@ -174,10 +175,13 @@ def generate_pmc15_pipeline_outputs(
     output_file_path: Path = (
         repo_root / "_results" / "data" / "pubmed_parsed_data.json"
     ),
+    keywords: list[str] | None = None,
 ):
 
     # input - path to .nxml file for each article in the article package
     # output - json object with pmid, pmc id, location (path to article package in storage blobs), figures - list of figure objects which include inline references (mentions of figure throughout the article), caption for the figure, id, label, graphic_ref (filepath to figure jpg in storage blobs), pair_id (a unique id to identify each figure in the article, using pmid + figure_id)
+    keywords_lower = [kw.lower() for kw in (keywords or DEFAULT_KEYWORDS)]
+
     def parse_single_pubmed_file(nxml_path: Path):
         print(nxml_path)
 
@@ -227,8 +231,12 @@ def generate_pmc15_pipeline_outputs(
                 if len(ir_objects) > 0:
                     raise NotImplementedError("Inline references not implemented")
 
+                caption = str(figure_dict.get("fig_caption", ""))
+                if not any(kw in caption.lower() for kw in keywords_lower):
+                    continue
+
                 figure_object = {
-                    "fig_caption": str(figure_dict.get("fig_caption", "")),
+                    "fig_caption": caption,
                     "fig_id": str(figure_dict.get("fig_id", "")),
                     "fig_label": str(figure_dict.get("fig_label", "")),
                     "graphic_ref": (
@@ -241,6 +249,9 @@ def generate_pmc15_pipeline_outputs(
                 }
 
                 figures.append(figure_object)
+
+            if not figures:
+                return []
 
             article = {
                 "pmid": pmid,
@@ -280,7 +291,7 @@ def count_articles_with_keywords(
     """
 
     if keywords is None:
-        keywords = ["pathology", "whole slide image", "H&E"]
+        keywords = DEFAULT_KEYWORDS
 
     keyword_counts = {kw.lower(): 0 for kw in keywords}
 

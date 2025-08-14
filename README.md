@@ -30,6 +30,18 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Filtering Captions by Keyword
+
+`generate_pmc15_pipeline_outputs` can restrict the dataset to figures whose
+captions mention specific terms. By default it keeps only captions containing
+"pathology", "whole slide image", or "H&E":
+
+```python
+from pmc15_pipeline.data import generate_pmc15_pipeline_outputs
+
+generate_pmc15_pipeline_outputs(keywords=["pathology", "whole slide image", "H&E"])
+```
+
 ## Counting Articles by Keyword
 
 After generating `pubmed_parsed_data.json`, you can count how many articles
