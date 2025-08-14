@@ -46,8 +46,10 @@ Each figure written to `pubmed_parsed_data.json` includes a `domains` array, and
 the enclosing article lists all domains found across its figures. The function
 also writes `_results/data/domain_caption_pairs.jsonl`, containing one line per
 figure-domain combination with the structure `{ "domain": "pathology", "text": "caption" }`.
-You can also fetch the domain keyword mapping from a remote JSON glossary by
-passing its URL with `glossary_url`.
+You can also fetch domain keyword mappings from remote JSON glossaries by
+providing a `glossary_urls` dictionary. Each key is a domain name and each value
+is a URL returning a JSON array of keywords for that domain. Passing a single
+URL is still supported for backward compatibility.
 
 ```python
 from pmc15_pipeline.data import generate_pmc15_pipeline_outputs
@@ -57,8 +59,13 @@ generate_pmc15_pipeline_outputs()  # Use defaults shown above
 # Or provide your own list of keywords
 # generate_pmc15_pipeline_outputs(keywords=["custom term"])
 
-# Pull domain keywords from a remote glossary
-# generate_pmc15_pipeline_outputs(glossary_url="https://example.com/domain_glossary.json")
+# Pull domain keywords from remote glossaries
+# generate_pmc15_pipeline_outputs(
+#     glossary_urls={
+#         "pathology": "https://example.com/pathology_keywords.json",
+#         "mri": "https://example.com/mri_keywords.json",
+#     }
+# )
 ```
 
 ## Counting Articles by Domain
@@ -71,8 +78,13 @@ from pmc15_pipeline.data import count_articles_with_keywords
 
 count_articles_with_keywords()
 
-# Use the same remote glossary as above
-# count_articles_with_keywords(glossary_url="https://example.com/domain_glossary.json")
+# Use the same remote glossaries as above
+# count_articles_with_keywords(
+#     glossary_urls={
+#         "pathology": "https://example.com/pathology_keywords.json",
+#         "mri": "https://example.com/mri_keywords.json",
+#     }
+# )
 ```
 
 Provide your own list of terms with the `keywords` argument if you want to

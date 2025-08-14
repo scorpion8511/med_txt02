@@ -26,26 +26,42 @@ DEFAULT_DOMAIN_KEYWORDS = {
 }
 
 
-def load_domain_keywords(url: str | None = None) -> dict[str, list[str]]:
-    """Load domain keywords from ``url`` or fall back to defaults.
+def load_domain_keywords(urls: dict[str, str] | str | None = None) -> dict[str, list[str]]:
+    """Load domain keywords from remote ``urls`` or fall back to defaults.
 
-    ``url`` should point to a JSON object mapping domain names to a list of
-    keywords. If the download fails or the mapping is incomplete, the
-    hard-coded defaults are used instead.
+    ``urls`` may be a single URL pointing to a JSON object mapping domain names
+    to lists of keywords, or a dictionary mapping individual domain names to
+    URLs returning a JSON array for that domain. Failed downloads leave the
+    default keywords in place.
     """
 
     keywords = DEFAULT_DOMAIN_KEYWORDS.copy()
 
-    if url:
+    if isinstance(urls, str) and urls:
+        # Backwards compatibility: single URL hosting all domains
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(urls, timeout=10)
             response.raise_for_status()
             data = response.json()
             for domain in keywords:
                 if isinstance(data.get(domain), list):
                     keywords[domain] = data[domain]
         except requests.RequestException as err:  # pragma: no cover - network
-            print(f"Failed to fetch domain glossary from {url}: {err}")
+            print(f"Failed to fetch domain glossary from {urls}: {err}")
+    elif isinstance(urls, dict):
+        for domain, url in urls.items():
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+                if isinstance(data, list):
+                    keywords[domain] = data
+                elif isinstance(data, dict) and isinstance(data.get(domain), list):
+                    keywords[domain] = data[domain]
+            except requests.RequestException as err:  # pragma: no cover - network
+                print(
+                    f"Failed to fetch domain glossary for '{domain}' from {url}: {err}"
+                )
 
     return keywords
 
@@ -218,7 +234,7 @@ def generate_pmc15_pipeline_outputs(
         repo_root / "_results" / "data" / "pubmed_parsed_data.json"
     ),
     keywords: list[str] | None = None,
-    glossary_url: str | None = None,
+    glossary_urls: dict[str, str] | str | None = None,
     domain_caption_output: Path | None = (
         repo_root / "_results" / "data" / "domain_caption_pairs.jsonl"
     ),
@@ -226,7 +242,7 @@ def generate_pmc15_pipeline_outputs(
 
     # input - path to .nxml file for each article in the article package
     # output - json object with pmid, pmc id, location (path to article package in storage blobs), figures - list of figure objects which include inline references (mentions of figure throughout the article), caption for the figure, id, label, graphic_ref (filepath to figure jpg in storage blobs), pair_id (a unique id to identify each figure in the article, using pmid + figure_id)
-    domain_keywords = load_domain_keywords(glossary_url)
+    domain_keywords = load_domain_keywords(glossary_urls)
     keywords_lower = [
         kw.lower() for kw in (keywords or [kw for kws in domain_keywords.values() for kw in kws])
     ]
@@ -353,14 +369,14 @@ def count_articles_with_keywords(
     dataset_path: Path = repo_root / "_results" / "data" / "pubmed_parsed_data.json",
     keywords: list[str] | None = None,
     domain_keywords: dict[str, list[str]] | None = None,
-    glossary_url: str | None = None,
+    glossary_urls: dict[str, str] | str | None = None,
 ) -> dict[str, int]:
     """Count articles whose figure captions mention given keywords or domains."""
 
     if keywords is not None:
         keyword_counts = {kw.lower(): 0 for kw in keywords}
     else:
-        domain_keywords = domain_keywords or load_domain_keywords(glossary_url)
+        domain_keywords = domain_keywords or load_domain_keywords(glossary_urls)
         domain_keywords_lower = {
             domain: [kw.lower() for kw in kws]
             for domain, kws in domain_keywords.items()
