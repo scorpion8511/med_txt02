@@ -13,7 +13,16 @@ from .types import PubMedFile
 from .utils import fs_utils
 
 repo_root = fs_utils.get_repo_root_path()
-DEFAULT_KEYWORDS = ["pathology", "whole slide image", "H&E"]
+DEFAULT_KEYWORDS = [
+    "pathology",
+    "whole slide image",
+    "H&E",
+    "x-ray",
+    "MRI",
+    "endoscopy",
+    "gastrology",
+    "ultrasound",
+]
 
 
 def download_pubmed_file_list(
