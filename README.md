@@ -48,7 +48,9 @@ also writes `_results/data/domain_caption_pairs.jsonl`, containing one line per
 figure-domain combination with the structure `{ "domain": "pathology", "text": "caption" }`.
 Figures lacking any of the keywords are skipped entirely, so a small sample of
 articles may yield an empty output file if none of their captions mention the
-default terms.
+default terms. Captions containing common animal terms (for example “mouse” or
+“rat”) are omitted to focus on human-related content. Set
+`exclude_keywords=None` to include them.
 You can also fetch domain keyword mappings from remote JSON glossaries by
 providing a `glossary_urls` dictionary. Each key is a domain name and each value
 is a URL returning a JSON array of keywords for that domain. Passing a single
@@ -61,6 +63,9 @@ generate_pmc15_pipeline_outputs()  # Use defaults shown above
 
 # Or provide your own list of keywords
 # generate_pmc15_pipeline_outputs(keywords=["custom term"])
+
+# Include captions mentioning animals
+# generate_pmc15_pipeline_outputs(exclude_keywords=None)
 
 # Pull domain keywords from remote glossaries
 # generate_pmc15_pipeline_outputs(

@@ -32,6 +32,42 @@ DEFAULT_KEYWORDS = [
     kw for kws in DEFAULT_DOMAIN_KEYWORDS.values() for kw in kws
 ]
 
+# Common animal-related terms that should be excluded to focus on human data
+ANIMAL_KEYWORDS = [
+    "mouse",
+    "mice",
+    "murine",
+    "rat",
+    "rats",
+    "rabbit",
+    "rabbits",
+    "canine",
+    "dog",
+    "dogs",
+    "cat",
+    "cats",
+    "feline",
+    "porcine",
+    "pig",
+    "pigs",
+    "swine",
+    "bovine",
+    "cow",
+    "cattle",
+    "sheep",
+    "goat",
+    "hamster",
+    "monkey",
+    "monkeys",
+    "primate",
+    "primates",
+    "zebrafish",
+    "drosophila",
+    "fruit fly",
+    "guinea pig",
+    "ferret",
+]
+
 
 def load_domain_keywords(urls: dict[str, str] | str | None = None) -> dict[str, list[str]]:
     """Load domain keywords from remote ``urls`` or fall back to defaults.
@@ -241,6 +277,7 @@ def generate_pmc15_pipeline_outputs(
     ),
     keywords: list[str] | None = None,
     glossary_urls: dict[str, str] | str | None = None,
+    exclude_keywords: list[str] | None = ANIMAL_KEYWORDS,
     domain_caption_output: Path | None = (
         repo_root / "_results" / "data" / "domain_caption_pairs.jsonl"
     ),
@@ -255,6 +292,7 @@ def generate_pmc15_pipeline_outputs(
 
     domain_keywords = load_domain_keywords(glossary_urls)
     keywords_lower = {kw.lower() for kw in (keywords or DEFAULT_KEYWORDS)}
+    exclude_lower = [kw.lower() for kw in (exclude_keywords or [])]
     domain_keywords_lower = {
         domain: [kw.lower() for kw in kws]
         for domain, kws in domain_keywords.items()
@@ -311,6 +349,8 @@ def generate_pmc15_pipeline_outputs(
 
                 caption = str(figure_dict.get("fig_caption", ""))
                 caption_lower = caption.lower()
+                if exclude_lower and any(kw in caption_lower for kw in exclude_lower):
+                    continue
                 if not any(kw in caption_lower for kw in keywords_lower):
                     continue
 
