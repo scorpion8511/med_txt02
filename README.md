@@ -30,6 +30,20 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Downloading and Decompressing Articles
+
+```python
+from pmc15_pipeline.data import (
+    download_pubmed_file_list,
+    download_pubmed_files_from_list,
+    decompress_pubmed_files,
+)
+
+download_pubmed_file_list()
+download_pubmed_files_from_list(subset_size=100)  # adjust as needed
+decompress_pubmed_files()  # skips archives already extracted and continues past errors
+```
+
 ## Filtering Captions by Keyword
 
 `generate_pmc15_pipeline_outputs` can restrict the dataset to figures whose

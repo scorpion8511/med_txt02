@@ -252,7 +252,9 @@ def decompress_pubmed_files(
         python3 -m data.decompress_pubmed_files
     """
 
-    # Get dicts from files list
+    # Ensure output directory exists
+    output_folder_path.mkdir(parents=True, exist_ok=True)
+
     file_paths = list(input_folder_path.glob(file_extension))
 
     print(
@@ -260,10 +262,18 @@ def decompress_pubmed_files(
     )
 
     for file_path in tqdm(file_paths):
-        with tarfile.open(file_path, "r:gz") as tar_file:
-            # TODO: Use article folder path instead of output folder path?
-            # Causes duplicate folder names since tar file contains folder
-            tar_file.extractall(output_folder_path)
+        dest_dir = output_folder_path / file_path.name.replace(".tar.gz", "")
+
+        if dest_dir.exists():
+            tqdm.write(
+                f"Archive {file_path.name} already extracted. Skipping.")
+            continue
+
+        try:
+            with tarfile.open(file_path, "r:gz") as tar_file:
+                tar_file.extractall(output_folder_path)
+        except (tarfile.TarError, OSError) as err:
+            tqdm.write(f"Failed to extract {file_path.name}: {err}")
 
     print(f"Finished extracting {len(file_paths)} files")
 
