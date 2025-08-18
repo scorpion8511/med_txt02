@@ -116,6 +116,51 @@ DOMAIN_KEYWORDS_LOWER = {
 }
 
 
+def _basic_caption_parse(nxml_path: Path) -> list[dict]:
+    """Fallback parser for figure captions when ``pubmed_parser`` fails.
+
+    This routine performs a lightweight XML walk to collect figure metadata
+    such as caption text, IDs and graphic references. It mirrors the minimal
+    structure returned by :func:`pubmed_parser.parse_pubmed_caption` so the
+    rest of the pipeline can proceed. Any errors result in an empty list.
+    """
+
+    try:
+        tree = etree.parse(str(nxml_path))
+    except Exception as err:  # pragma: no cover - parse errors are rare
+        print(f"Fallback parser failed for {nxml_path}: {err}")
+        return []
+
+    pmid = tree.findtext('.//article-id[@pub-id-type="pmid"]', default='')
+    pmc = tree.findtext('.//article-id[@pub-id-type="pmcid"]', default='')
+    figures: list[dict] = []
+
+    for fig in tree.findall('.//fig'):
+        caption_el = fig.find('caption')
+        caption_text = (
+            ''.join(caption_el.itertext()).strip() if caption_el is not None else ''
+        )
+        label = fig.findtext('label', default='')
+        graphic_el = fig.find('.//graphic')
+        graphic_ref = ''
+        if graphic_el is not None:
+            graphic_ref = graphic_el.get('{http://www.w3.org/1999/xlink}href', '')
+
+        figures.append(
+            {
+                'fig_caption': caption_text,
+                'fig_id': fig.get('id', ''),
+                'fig_label': label or '',
+                'graphic_ref': graphic_ref,
+                'pmid': pmid,
+                'pmc': pmc,
+                'fig_refs': [],
+            }
+        )
+
+    return figures
+
+
 def download_pubmed_file_list(
     url=PUBMED_OPEN_ACCESS_FILE_LIST_URL,
     output_file_path: Path = (
@@ -309,15 +354,11 @@ def generate_pmc15_pipeline_outputs(
             print("starting...")
             output = pubmed_parser.parse_pubmed_caption(str(nxml_path.absolute()))
             print("parsed", nxml_path)
-        except AttributeError as ae:
-            print("Attribute Error: " + str(ae) + " path: " + str(nxml_path))
-            return []
-        except etree.XMLSyntaxError as xmle:
-            print("XML Syntax Error: " + str(xmle) + " path: " + str(nxml_path))
-            return []
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - network/parsing errors
             print("Exception: " + str(e) + " path: " + str(nxml_path))
-            return []
+            output = _basic_caption_parse(nxml_path)
+            if not output:
+                return []
 
         if not output:
             print("no output")
