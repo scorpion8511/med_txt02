@@ -373,8 +373,9 @@ def generate_pmc15_pipeline_outputs(
             print("error")
             return []
 
+        print("starting...")
+        output: list[dict] = []
         try:
-            print("starting...")
             if nxml_path.stat().st_size > 5_000_000:
                 # Large XML files often embed images and may exhaust memory
                 output = _basic_caption_parse(nxml_path)
@@ -384,46 +385,48 @@ def generate_pmc15_pipeline_outputs(
                 )
             if not output:
                 output = _basic_caption_parse(nxml_path)
-            print("parsed", nxml_path)
         except MemoryError:
             # OOM while using pubmed_parser; retry with streaming parser
             print("MemoryError: falling back to lightweight parser")
             output = _basic_caption_parse(nxml_path)
-            if not output:
-                return []
-        except Exception as e:  # pragma: no cover - network/parsing errors
-            print("Exception: " + str(e) + " path: " + str(nxml_path))
+        except UnboundLocalError as err:
+            # Some articles trigger a bug in pubmed_parser referencing an
+            # undefined 'caption' variable.  Fall back to the lightweight parser
+            # without treating it as a fatal error.
+            print(f"Parser bug in pubmed_parser for {nxml_path}: {err}")
             output = _basic_caption_parse(nxml_path)
-            if not output:
-                return []
+        except Exception as err:  # pragma: no cover - unexpected parse errors
+            print(f"Error parsing {nxml_path}: {err}")
+            output = _basic_caption_parse(nxml_path)
 
         if not output:
             print("no output")
             return []
 
-        else:
-            figures = []
-            pmid = output[0]["pmid"]  # same for all figures in the article
-            pmc = output[0]["pmc"]  # same for all figures in the article
-            location = Path(nxml_path).parent
+        print("parsed", nxml_path)
 
-            # for all figures in the article, create a figure object with inline references (text, section, reference_id), and caption, id, label, graphic_ref, pair_id
-            for figure_dict in output:
-                inline_references = figure_dict.get(
-                    "fig_refs", {}
-                )  # from pubmed parser
-                ir_objects = []
-                for inline_reference in inline_references:
-                    inline_reference_object = {
-                        "text": str(inline_reference.get("text", "")),
-                        "section": str(inline_reference.get("section", "")),
-                        "reference_id": str(inline_reference.get("reference_id", "")),
-                    }
+        figures = []
+        pmid = output[0]["pmid"]  # same for all figures in the article
+        pmc = output[0]["pmc"]  # same for all figures in the article
+        location = Path(nxml_path).parent
 
-                    ir_objects.append(inline_reference_object)
+        # for all figures in the article, create a figure object with inline references (text, section, reference_id), and caption, id, label, graphic_ref, pair_id
+        for figure_dict in output:
+            inline_references = figure_dict.get(
+                "fig_refs", {}
+            )  # from pubmed parser
+            ir_objects = []
+            for inline_reference in inline_references:
+                inline_reference_object = {
+                    "text": str(inline_reference.get("text", "")),
+                    "section": str(inline_reference.get("section", "")),
+                    "reference_id": str(inline_reference.get("reference_id", "")),
+                }
 
-                if len(ir_objects) > 0:
-                    raise NotImplementedError("Inline references not implemented")
+                ir_objects.append(inline_reference_object)
+
+            if len(ir_objects) > 0:
+                raise NotImplementedError("Inline references not implemented")
 
                 caption = str(figure_dict.get("fig_caption", ""))
                 caption_lower = caption.lower()
