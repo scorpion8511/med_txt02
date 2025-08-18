@@ -3,6 +3,7 @@ import tarfile
 from pathlib import Path
 from typing import Optional
 import contextlib
+import gc
 
 import pubmed_parser
 import requests
@@ -117,46 +118,68 @@ DOMAIN_KEYWORDS_LOWER = {
 
 
 def _basic_caption_parse(nxml_path: Path) -> list[dict]:
-    """Fallback parser for figure captions when ``pubmed_parser`` fails.
+    """Memory-friendly caption parser using ``iterparse``.
 
-    This routine performs a lightweight XML walk to collect figure metadata
-    such as caption text, IDs and graphic references. It mirrors the minimal
-    structure returned by :func:`pubmed_parser.parse_pubmed_caption` so the
-    rest of the pipeline can proceed. Any errors result in an empty list.
+    ``pubmed_parser`` loads the entire XML tree into memory which can exceed
+    the container limits for articles embedding large images.  This streaming
+    parser walks the file incrementally and clears elements as soon as they
+    are processed, keeping the memory footprint small.  Only minimal figure
+    metadata is extracted.  Any errors result in an empty list.
     """
 
+    figures: list[dict] = []
+    pmid = ""
+    pmc = ""
+    current: dict | None = None
+
     try:
-        tree = etree.parse(str(nxml_path))
+        # ``huge_tree`` allows lxml to handle base64 encoded images without
+        # exhausting memory; ``iterparse`` ensures elements are discarded as we
+        # progress through the document.
+        context = etree.iterparse(
+            str(nxml_path), events=("start", "end"), recover=True, huge_tree=True
+        )
     except Exception as err:  # pragma: no cover - parse errors are rare
         print(f"Fallback parser failed for {nxml_path}: {err}")
         return []
 
-    pmid = tree.findtext('.//article-id[@pub-id-type="pmid"]', default='')
-    pmc = tree.findtext('.//article-id[@pub-id-type="pmcid"]', default='')
-    figures: list[dict] = []
-
-    for fig in tree.findall('.//fig'):
-        caption_el = fig.find('caption')
-        caption_text = (
-            ''.join(caption_el.itertext()).strip() if caption_el is not None else ''
-        )
-        label = fig.findtext('label', default='')
-        graphic_el = fig.find('.//graphic')
-        graphic_ref = ''
-        if graphic_el is not None:
-            graphic_ref = graphic_el.get('{http://www.w3.org/1999/xlink}href', '')
-
-        figures.append(
-            {
-                'fig_caption': caption_text,
-                'fig_id': fig.get('id', ''),
-                'fig_label': label or '',
-                'graphic_ref': graphic_ref,
-                'pmid': pmid,
-                'pmc': pmc,
-                'fig_refs': [],
+    for event, elem in context:
+        if event == "start" and elem.tag == "fig":
+            current = {
+                "fig_caption": "",
+                "fig_id": elem.get("id", ""),
+                "fig_label": "",
+                "graphic_ref": "",
+                "pmid": "",
+                "pmc": "",
+                "fig_refs": [],
             }
-        )
+        elif event == "end":
+            if elem.tag == "article-id":
+                id_type = elem.get("pub-id-type")
+                if id_type == "pmid":
+                    pmid = elem.text or ""
+                elif id_type == "pmcid":
+                    pmc = elem.text or ""
+            elif current is not None:
+                if elem.tag == "label":
+                    current["fig_label"] = elem.text or ""
+                elif elem.tag == "caption":
+                    current["fig_caption"] = "".join(elem.itertext()).strip()
+                elif elem.tag == "graphic":
+                    current["graphic_ref"] = elem.get(
+                        "{http://www.w3.org/1999/xlink}href", ""
+                    )
+                elif elem.tag == "fig":
+                    current["pmid"] = pmid
+                    current["pmc"] = pmc
+                    figures.append(current)
+                    current = None
+            # Release memory for processed elements
+            if elem.getparent() is not None:
+                while elem.getprevious() is not None:
+                    del elem.getparent()[0]
+                elem.clear()
 
     return figures
 
@@ -352,8 +375,22 @@ def generate_pmc15_pipeline_outputs(
 
         try:
             print("starting...")
-            output = pubmed_parser.parse_pubmed_caption(str(nxml_path.absolute()))
+            if nxml_path.stat().st_size > 5_000_000:
+                # Large XML files often embed images and may exhaust memory
+                output = _basic_caption_parse(nxml_path)
+            else:
+                output = pubmed_parser.parse_pubmed_caption(
+                    str(nxml_path.absolute())
+                )
+            if not output:
+                output = _basic_caption_parse(nxml_path)
             print("parsed", nxml_path)
+        except MemoryError:
+            # OOM while using pubmed_parser; retry with streaming parser
+            print("MemoryError: falling back to lightweight parser")
+            output = _basic_caption_parse(nxml_path)
+            if not output:
+                return []
         except Exception as e:  # pragma: no cover - network/parsing errors
             print("Exception: " + str(e) + " path: " + str(nxml_path))
             output = _basic_caption_parse(nxml_path)
@@ -453,7 +490,7 @@ def generate_pmc15_pipeline_outputs(
                             )
 
                 f.write(json.dumps(article) + "\n")
-
+            gc.collect()
     print(f"Processed {processed_files} files")
 
 
