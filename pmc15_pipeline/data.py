@@ -162,20 +162,22 @@ def download_pubmed_files_from_list(
         python3 -m data.download_pubmed_files
     """
 
-    # Get dicts from files list
-    pubmed_files: list[PubMedFile] = []
+    output_folder_path.mkdir(parents=True, exist_ok=True)
+    skipped_files = []
+
+    def _get_file_size(url: str) -> int | None:
+        response = requests.head(url)
+        if "Content-Length" in response.headers:
+            return int(response.headers["Content-Length"])
+        return None
 
     with open(file_list_path, "r") as file:
-        lines = file.readlines()
-
-        # Skip header
-        lines = lines[1:]
-
-        for line_idx, line in enumerate(lines):
-            if subset_size and line_idx + 1 > subset_size:
+        next(file)  # skip header line
+        for line_idx, line in enumerate(file):
+            if subset_size and line_idx >= subset_size:
                 break
 
-            [path, title, pmcid, pmid, code] = line.strip().split("\t")
+            path, title, pmcid, pmid, code = line.strip().split("\t")
             pubmed_file: PubMedFile = {
                 "path": path,
                 "title": title,
@@ -183,50 +185,38 @@ def download_pubmed_files_from_list(
                 "pmid": pmid,
                 "code": code,
             }
-            pubmed_files.append(pubmed_file)
 
-    # Create output folder
-    output_folder_path.mkdir(parents=True, exist_ok=True)
-    skipped_files = []
+            file_name = pmcid + file_extension
+            file_path = output_folder_path / file_name
 
-    def _get_file_size(url):
-        response = requests.head(url)
-        if "Content-Length" in response.headers:
-            return int(response.headers["Content-Length"])
-        else:
-            return None
+            if file_path.exists():
+                tqdm.write(
+                    f"File: {file_name} already exists. Not downloading again."
+                )
+                continue
 
-    for pubmed_file in tqdm(pubmed_files):
-        file_name = pubmed_file["pmcid"] + file_extension
-        file_path = output_folder_path / file_name
+            article_url = PUBMED_OPEN_ACCESS_BASE_URL + path
+            file_size = _get_file_size(article_url)
+            if file_size is None:
+                tqdm.write(
+                    f"File: {file_name} Skipped! Could not get file size!"
+                )
+                skipped_files.append(pubmed_file)
+                continue
 
-        # Check if the file already exists
-        if file_path.exists():
-            tqdm.write(f"File: {file_name} already exists. Not downloading again.")
-            continue
-
-        article_url = PUBMED_OPEN_ACCESS_BASE_URL + pubmed_file["path"]
-        file_size = _get_file_size(article_url)
-
-        if file_size is not None:
             tqdm.write(f"File: {file_name} size: {file_size} bytes")
             try:
-                response = requests.get(article_url)
-                response.raise_for_status()  # Raise an HTTPError for bad responses
-
-                with open(file_path, "wb") as file:
-                    file.write(response.content)
-
-            except requests.exceptions.RequestException as e:
-                tqdm.write(f"File: {file_name} Skipped! Error occurred: {e}")
+                with requests.get(article_url, stream=True, timeout=30) as r:
+                    r.raise_for_status()
+                    with open(file_path, "wb") as f_out:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:
+                                f_out.write(chunk)
+            except requests.RequestException as e:
+                tqdm.write(
+                    f"File: {file_name} Skipped! Error occurred: {e}"
+                )
                 skipped_files.append(pubmed_file)
-
-            with open(file_path, "wb") as file:
-                file.write(response.content)
-
-        else:
-            tqdm.write(f"File: {file_name} Skipped! Could not get file size!")
-            skipped_files.append(pubmed_file)
 
     print(f"Skipped {len(skipped_files)} files.")
 

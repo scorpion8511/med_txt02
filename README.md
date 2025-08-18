@@ -40,7 +40,7 @@ from pmc15_pipeline.data import (
 )
 
 download_pubmed_file_list()
-download_pubmed_files_from_list(subset_size=100)  # adjust as needed
+download_pubmed_files_from_list(subset_size=100)  # streamed in chunks
 decompress_pubmed_files()  # skips archives already extracted and continues past errors
 ```
 
