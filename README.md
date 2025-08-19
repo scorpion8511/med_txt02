@@ -89,6 +89,15 @@ generate_pmc15_pipeline_outputs()  # Use defaults shown above
 #         "mri": "https://example.com/mri_keywords.json",
 #     }
 # )
+
+# Run in 5k-file batches
+# batch_size = 5000
+# for batch in range(num_batches):
+#     generate_pmc15_pipeline_outputs(
+#         start_index=batch * batch_size,
+#         max_files=batch_size,
+#         append=batch > 0,
+#     )
 ```
 
 ## Counting Articles by Domain

@@ -349,10 +349,22 @@ def generate_pmc15_pipeline_outputs(
     domain_caption_output: Path | None = (
         repo_root / "_results" / "data" / "domain_caption_pairs.jsonl"
     ),
+    start_index: int = 0,
+    max_files: int | None = None,
+    append: bool = False,
 ):
+    """Parse figure captions and write them to a JSONL dataset.
 
-    # input - path to .nxml file for each article in the article package
-    # output - json object with pmid, pmc id, location (path to article package in storage blobs), figures - list of figure objects which include inline references (mentions of figure throughout the article), caption for the figure, id, label, graphic_ref (filepath to figure jpg in storage blobs), pair_id (a unique id to identify each figure in the article, using pmid + figure_id)
+    Parameters
+    ----------
+    start_index:
+        Skip this many ``.nxml`` files before processing.
+    max_files:
+        Process at most this many files; ``None`` means no limit.
+    append:
+        Append to output files if ``True`` instead of overwriting.
+    """
+
     # Ensure destination directories exist before any processing occurs
     output_file_path.parent.mkdir(parents=True, exist_ok=True)
     if domain_caption_output:
@@ -472,11 +484,18 @@ def generate_pmc15_pipeline_outputs(
 
         return [article]
 
-    with output_file_path.open("w+") as f, (
-        domain_caption_output.open("w") if domain_caption_output else contextlib.nullcontext()
+    file_mode = "a" if append else "w"
+    with output_file_path.open(file_mode) as f, (
+        domain_caption_output.open(file_mode)
+        if domain_caption_output
+        else contextlib.nullcontext()
     ) as cap_f:
         processed_files = 0
-        for nxml_file in decompressed_folder.rglob("*.nxml"):
+        for idx, nxml_file in enumerate(decompressed_folder.rglob("*.nxml")):
+            if idx < start_index:
+                continue
+            if max_files is not None and (idx - start_index) >= max_files:
+                break
             parsed = parse_single_pubmed_file(nxml_file)
             processed_files += 1
 
