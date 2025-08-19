@@ -30,6 +30,118 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Downloading and Decompressing Articles
+
+```python
+from pmc15_pipeline.data import (
+    download_pubmed_file_list,
+    download_pubmed_files_from_list,
+    decompress_pubmed_files,
+)
+
+download_pubmed_file_list()
+download_pubmed_files_from_list(subset_size=100)  # streamed in chunks
+decompress_pubmed_files()  # skips archives already extracted and continues past errors
+generate_pmc15_pipeline_outputs()  # streams captions to keep memory usage low
+```
+
+## Filtering Captions by Keyword
+
+`generate_pmc15_pipeline_outputs` can restrict the dataset to figures whose
+captions mention specific terms. By default it keeps only captions containing
+keywords from these imaging domains:
+
+- **pathology:** "pathology", "whole slide image", "H&E"
+- **x-ray:** "x-ray"
+- **endoscopy:** "endoscopy", "gastrology"
+- **ultra:** "ultrasound"
+- **mri:** "MRI"
+
+Each figure written to `pubmed_parsed_data.json` includes a `domains` array, and
+the enclosing article lists all domains found across its figures. The function
+also writes `_results/data/domain_caption_pairs.jsonl`, containing one line per
+figure-domain combination with the structure `{ "domain": "pathology", "text": "caption" }`.
+Figures lacking any of the keywords are skipped entirely, so a small sample of
+articles may yield an empty output file if none of their captions mention the
+default terms. Captions containing common animal terms (for example “mouse” or
+“rat”) are omitted to focus on human-related content. Set
+`exclude_keywords=None` to include them.
+You can also fetch domain keyword mappings from remote JSON glossaries by
+providing a `glossary_urls` dictionary. Each key is a domain name and each value
+is a URL returning a JSON array of keywords for that domain. Passing a single
+URL is still supported for backward compatibility.
+
+```python
+from pmc15_pipeline.data import generate_pmc15_pipeline_outputs
+
+generate_pmc15_pipeline_outputs()  # Use defaults shown above
+
+# Or provide your own list of keywords
+# generate_pmc15_pipeline_outputs(keywords=["custom term"])
+
+# Include captions mentioning animals
+# generate_pmc15_pipeline_outputs(exclude_keywords=None)
+
+# Pull domain keywords from remote glossaries
+# generate_pmc15_pipeline_outputs(
+#     glossary_urls={
+#         "pathology": "https://example.com/pathology_keywords.json",
+#         "mri": "https://example.com/mri_keywords.json",
+#     }
+# )
+```
+
+## Counting Articles by Domain
+
+After generating `pubmed_parsed_data.json`, you can see how many articles
+mention each domain in their figure captions:
+
+```python
+from pmc15_pipeline.data import count_articles_with_keywords
+
+count_articles_with_keywords()
+
+# Use the same remote glossaries as above
+# count_articles_with_keywords(
+#     glossary_urls={
+#         "pathology": "https://example.com/pathology_keywords.json",
+#         "mri": "https://example.com/mri_keywords.json",
+#     }
+# )
+```
+
+Provide your own list of terms with the `keywords` argument if you want to
+search for different phrases instead of the preset domains.
+
+## Exporting Domain-Caption Pairs
+
+To create a lightweight dataset for domain classification, write one line per
+figure with its domain and caption text:
+
+`generate_pmc15_pipeline_outputs` writes this file automatically; if you need
+to recreate it from an existing dataset, call:
+
+```python
+from pmc15_pipeline.data import export_domain_caption_pairs
+
+export_domain_caption_pairs()
+```
+
+## Exporting Captions with Default Keywords
+
+If you already have `pubmed_parsed_data.json` but only want the captions that
+mention the default imaging-domain keywords, create a lightweight JSONL file:
+
+```python
+from pmc15_pipeline.data import export_keyword_caption_pairs
+
+export_keyword_caption_pairs()
+```
+
+Each line in `_results/data/keyword_caption_pairs.jsonl` has the form
+`{ "text": "caption" }`. Pass your own list of `keywords` to filter for
+different terms.
+
 ## Reference
 ```bibtex
 @article{zhang2024biomedclip,
