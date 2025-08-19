@@ -45,6 +45,24 @@ decompress_pubmed_files()  # skips archives already extracted and continues past
 generate_pmc15_pipeline_outputs()  # streams captions to keep memory usage low
 ```
 
+## Processing in Batches
+
+Large datasets can overwhelm memory and disk if processed all at once. Run the
+entire pipeline in batches of 5,000 archives (or any size you choose) and append
+results to `pubmed_parsed_data.json`:
+
+```python
+from pmc15_pipeline.data import process_in_batches
+
+process_in_batches(batch_size=5000)
+
+# Resume from a particular offset in the file list
+# process_in_batches(batch_size=5000, start_index=10000)
+```
+
+Previously downloaded or extracted archives are skipped, so re-running the
+function continues where it left off without reprocessing earlier files.
+
 ## Filtering Captions by Keyword
 
 `generate_pmc15_pipeline_outputs` can restrict the dataset to figures whose

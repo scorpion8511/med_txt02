@@ -216,6 +216,7 @@ def download_pubmed_files_from_list(
         repo_root / "_results" / "data" / "pubmed_open_access_files_compressed"
     ),
     subset_size: Optional[int] = None,
+    start_index: int = 0,
     file_extension=".tar.gz",
 ):
     """Download files from PubMed Open Access file list
@@ -232,6 +233,7 @@ def download_pubmed_files_from_list(
 
     output_folder_path.mkdir(parents=True, exist_ok=True)
     skipped_files = []
+    processed_pmcids: list[str] = []
 
     def _get_file_size(url: str) -> int | None:
         response = requests.head(url)
@@ -242,7 +244,9 @@ def download_pubmed_files_from_list(
     with open(file_list_path, "r") as file:
         next(file)  # skip header line
         for line_idx, line in enumerate(file):
-            if subset_size and line_idx >= subset_size:
+            if line_idx < start_index:
+                continue
+            if subset_size and len(processed_pmcids) >= subset_size:
                 break
 
             path, title, pmcid, pmid, code = line.strip().split("\t")
@@ -261,6 +265,7 @@ def download_pubmed_files_from_list(
                 tqdm.write(
                     f"File: {file_name} already exists. Not downloading again."
                 )
+                processed_pmcids.append(pmcid)
                 continue
 
             article_url = PUBMED_OPEN_ACCESS_BASE_URL + path
@@ -285,8 +290,12 @@ def download_pubmed_files_from_list(
                     f"File: {file_name} Skipped! Error occurred: {e}"
                 )
                 skipped_files.append(pubmed_file)
+                continue
+
+            processed_pmcids.append(pmcid)
 
     print(f"Skipped {len(skipped_files)} files.")
+    return processed_pmcids
 
 
 def decompress_pubmed_files(
@@ -297,6 +306,7 @@ def decompress_pubmed_files(
         repo_root / "_results" / "data" / "pubmed_open_access_files"
     ),
     file_extension="*.tar.gz",
+    pmcids: Optional[list[str]] = None,
 ):
     """Decompress article files from PubMed Open Access folder
 
@@ -313,27 +323,37 @@ def decompress_pubmed_files(
     # Ensure output directory exists
     output_folder_path.mkdir(parents=True, exist_ok=True)
 
-    file_paths = list(input_folder_path.glob(file_extension))
+    if pmcids is not None:
+        file_paths = [
+            input_folder_path / f"{pmcid}.tar.gz" for pmcid in pmcids
+            if (input_folder_path / f"{pmcid}.tar.gz").exists()
+        ]
+    else:
+        file_paths = list(input_folder_path.glob(file_extension))
 
     print(
         f"Found {len(file_paths)} files that match {file_extension} in {input_folder_path}"
     )
 
+    extracted: list[str] = []
     for file_path in tqdm(file_paths):
         dest_dir = output_folder_path / file_path.name.replace(".tar.gz", "")
 
         if dest_dir.exists():
             tqdm.write(
                 f"Archive {file_path.name} already extracted. Skipping.")
+            extracted.append(dest_dir.name)
             continue
 
         try:
             with tarfile.open(file_path, "r:gz") as tar_file:
                 tar_file.extractall(output_folder_path)
+            extracted.append(dest_dir.name)
         except (tarfile.TarError, OSError) as err:
             tqdm.write(f"Failed to extract {file_path.name}: {err}")
 
     print(f"Finished extracting {len(file_paths)} files")
+    return extracted
 
 
 def generate_pmc15_pipeline_outputs(
@@ -349,6 +369,8 @@ def generate_pmc15_pipeline_outputs(
     domain_caption_output: Path | None = (
         repo_root / "_results" / "data" / "domain_caption_pairs.jsonl"
     ),
+    pmcids: Optional[list[str]] = None,
+    append: bool = True,
 ):
 
     # input - path to .nxml file for each article in the article package
@@ -472,11 +494,20 @@ def generate_pmc15_pipeline_outputs(
 
             return [article]
 
-    with output_file_path.open("w+") as f, (
-        domain_caption_output.open("w") if domain_caption_output else contextlib.nullcontext()
+    nxml_files: list[Path]
+    if pmcids:
+        nxml_files = []
+        for pmc in pmcids:
+            nxml_files.extend((decompressed_folder / pmc).rglob("*.nxml"))
+    else:
+        nxml_files = list(decompressed_folder.rglob("*.nxml"))
+
+    mode = "a" if append else "w"
+    with output_file_path.open(mode) as f, (
+        domain_caption_output.open(mode) if domain_caption_output else contextlib.nullcontext()
     ) as cap_f:
         processed_files = 0
-        for nxml_file in decompressed_folder.rglob("*.nxml"):
+        for nxml_file in nxml_files:
             parsed = parse_single_pubmed_file(nxml_file)
             processed_files += 1
 
@@ -588,3 +619,40 @@ def export_keyword_caption_pairs(
                 caption = figure.get("fig_caption", "")
                 if any(kw in caption.lower() for kw in keywords_lower):
                     dest.write(json.dumps({"text": caption}) + "\n")
+
+
+def process_in_batches(
+    batch_size: int = 5000,
+    start_index: int = 0,
+    file_list_path: Path = repo_root
+    / "_results"
+    / "data"
+    / "pubmed_open_access_file_list.txt",
+    **kwargs,
+) -> None:
+    """Run the full pipeline in batches to avoid memory pressure.
+
+    Each iteration downloads ``batch_size`` archives, decompresses them,
+    generates caption outputs in append mode, and then advances to the next
+    batch. Existing downloads, extractions, and captions are skipped so the
+    function can resume from a previous run by increasing ``start_index``.
+    Additional keyword or glossary arguments are forwarded to
+    :func:`generate_pmc15_pipeline_outputs`.
+    """
+
+    offset = start_index
+    while True:
+        pmcids = download_pubmed_files_from_list(
+            file_list_path=file_list_path,
+            subset_size=batch_size,
+            start_index=offset,
+        )
+        if not pmcids:
+            break
+
+        extracted = decompress_pubmed_files(pmcids=pmcids)
+        generate_pmc15_pipeline_outputs(pmcids=extracted, append=True, **kwargs)
+
+        offset += batch_size
+        # free memory between batches
+        gc.collect()
