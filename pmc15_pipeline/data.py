@@ -226,6 +226,7 @@ def download_pubmed_files_from_list(
         output_folder_path (Path, optional): Path to save directory. Defaults to repo_root/"_results"/"data"/"pubmed_open_access_files_compressed".
         subset_size (int, optional): Number of files to download. Defaults to None (download all files).
         pmcids_path (Path, optional): Text file containing one PMCID per line.
+            The file must exist; IDs are matched case-insensitively.
 
     Example:
 
@@ -236,9 +237,15 @@ def download_pubmed_files_from_list(
     skipped_files = []
 
     pmcid_filter: set[str] | None = None
-    if pmcids_path and pmcids_path.exists():
+    if pmcids_path:
+        if not pmcids_path.exists():
+            raise FileNotFoundError(f"PMCID list not found: {pmcids_path}")
         with open(pmcids_path, "r") as pmc_file:
-            pmcid_filter = {line.strip() for line in pmc_file if line.strip()}
+            pmcid_filter = {
+                line.strip().upper() for line in pmc_file if line.strip()
+            }
+        if not pmcid_filter:
+            raise ValueError(f"No PMCIDs found in {pmcids_path}")
 
     def _get_file_size(url: str) -> int | None:
         response = requests.head(url)
@@ -251,8 +258,9 @@ def download_pubmed_files_from_list(
         downloaded = 0
         for line in file:
             path, title, pmcid, pmid, code = line.strip().split("\t")
+            pmcid_upper = pmcid.upper()
 
-            if pmcid_filter and pmcid not in pmcid_filter:
+            if pmcid_filter and pmcid_upper not in pmcid_filter:
                 continue
             if subset_size and downloaded >= subset_size:
                 break
@@ -265,7 +273,7 @@ def download_pubmed_files_from_list(
                 "code": code,
             }
 
-            file_name = pmcid + file_extension
+            file_name = pmcid_upper + file_extension
             file_path = output_folder_path / file_name
 
             if file_path.exists():
@@ -273,7 +281,7 @@ def download_pubmed_files_from_list(
                     f"File: {file_name} already exists. Not downloading again."
                 )
                 if pmcid_filter:
-                    pmcid_filter.discard(pmcid)
+                    pmcid_filter.discard(pmcid_upper)
                 continue
 
             article_url = PUBMED_OPEN_ACCESS_BASE_URL + path
@@ -301,10 +309,15 @@ def download_pubmed_files_from_list(
 
             downloaded += 1
             if pmcid_filter:
-                pmcid_filter.discard(pmcid)
+                pmcid_filter.discard(pmcid_upper)
                 if not pmcid_filter:
                     break
 
+    if pmcid_filter:
+        print(
+            f"Warning: {len(pmcid_filter)} PMCIDs were not found in the file list: "
+            f"{', '.join(sorted(pmcid_filter)[:5])}"
+        )
     print(f"Skipped {len(skipped_files)} files.")
 
 
