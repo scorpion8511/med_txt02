@@ -33,6 +33,7 @@ pip install -r requirements.txt
 ## Downloading and Decompressing Articles
 
 ```python
+from pathlib import Path
 from pmc15_pipeline.data import (
     download_pubmed_file_list,
     download_pubmed_files_from_list,
@@ -41,6 +42,8 @@ from pmc15_pipeline.data import (
 
 download_pubmed_file_list()
 download_pubmed_files_from_list(subset_size=100)  # streamed in chunks
+# Or download only specific PMCIDs listed in a text file
+# download_pubmed_files_from_list(pmcids_path=Path("pmc_ids.txt"))
 decompress_pubmed_files()  # skips archives already extracted and continues past errors
 generate_pmc15_pipeline_outputs()  # streams captions to keep memory usage low
 ```

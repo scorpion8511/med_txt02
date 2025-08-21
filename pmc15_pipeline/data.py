@@ -217,6 +217,7 @@ def download_pubmed_files_from_list(
     ),
     subset_size: Optional[int] = None,
     file_extension=".tar.gz",
+    pmcids_path: Path | None = None,
 ):
     """Download files from PubMed Open Access file list
 
@@ -224,6 +225,7 @@ def download_pubmed_files_from_list(
         file_list_path (Path, optional): Path to PubMed Open Access Files list. Defaults to "_results/data/pubmed_open_access_file_list_top_100.txt".
         output_folder_path (Path, optional): Path to save directory. Defaults to repo_root/"_results"/"data"/"pubmed_open_access_files_compressed".
         subset_size (int, optional): Number of files to download. Defaults to None (download all files).
+        pmcids_path (Path, optional): Text file containing one PMCID per line.
 
     Example:
 
@@ -233,6 +235,11 @@ def download_pubmed_files_from_list(
     output_folder_path.mkdir(parents=True, exist_ok=True)
     skipped_files = []
 
+    pmcid_filter: set[str] | None = None
+    if pmcids_path and pmcids_path.exists():
+        with open(pmcids_path, "r") as pmc_file:
+            pmcid_filter = {line.strip() for line in pmc_file if line.strip()}
+
     def _get_file_size(url: str) -> int | None:
         response = requests.head(url)
         if "Content-Length" in response.headers:
@@ -241,11 +248,15 @@ def download_pubmed_files_from_list(
 
     with open(file_list_path, "r") as file:
         next(file)  # skip header line
-        for line_idx, line in enumerate(file):
-            if subset_size and line_idx >= subset_size:
+        downloaded = 0
+        for line in file:
+            path, title, pmcid, pmid, code = line.strip().split("\t")
+
+            if pmcid_filter and pmcid not in pmcid_filter:
+                continue
+            if subset_size and downloaded >= subset_size:
                 break
 
-            path, title, pmcid, pmid, code = line.strip().split("\t")
             pubmed_file: PubMedFile = {
                 "path": path,
                 "title": title,
@@ -261,6 +272,8 @@ def download_pubmed_files_from_list(
                 tqdm.write(
                     f"File: {file_name} already exists. Not downloading again."
                 )
+                if pmcid_filter:
+                    pmcid_filter.discard(pmcid)
                 continue
 
             article_url = PUBMED_OPEN_ACCESS_BASE_URL + path
@@ -285,6 +298,12 @@ def download_pubmed_files_from_list(
                     f"File: {file_name} Skipped! Error occurred: {e}"
                 )
                 skipped_files.append(pubmed_file)
+
+            downloaded += 1
+            if pmcid_filter:
+                pmcid_filter.discard(pmcid)
+                if not pmcid_filter:
+                    break
 
     print(f"Skipped {len(skipped_files)} files.")
 
