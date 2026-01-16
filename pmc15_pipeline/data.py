@@ -175,6 +175,7 @@ def generate_pmc15_pipeline_outputs(
         repo_root / "_results" / "data" / "pubmed_parsed_data.json"
     ),
 ):
+    output_file_path.parent.mkdir(parents=True, exist_ok=True)
 
     # input - path to .nxml file for each article in the article package
     # output - json object with pmid, pmc id, location (path to article package in storage blobs), figures - list of figure objects which include inline references (mentions of figure throughout the article), caption for the figure, id, label, graphic_ref (filepath to figure jpg in storage blobs), pair_id (a unique id to identify each figure in the article, using pmid + figure_id)

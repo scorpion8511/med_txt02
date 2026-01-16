@@ -11,6 +11,11 @@ import argparse
 import csv
 import json
 from pathlib import Path
+from typing import Iterable
+
+import pubmed_parser
+from lxml import etree
+from tqdm import tqdm
 
 from pmc15_pipeline import data
 
@@ -27,7 +32,7 @@ def _load_parsed_articles(parsed_jsonl: Path) -> list[dict]:
 
 
 def _export_to_csv(
-    articles: list[dict],
+    articles: Iterable[dict],
     output_csv: Path,
     append: bool,
 ) -> None:
@@ -65,6 +70,57 @@ def _export_to_csv(
                         "pair_id": figure.get("pair_id", ""),
                     }
                 )
+
+
+def _iter_parsed_articles_from_nxml(decompressed_folder: Path) -> list[dict]:
+    def parse_single_pubmed_file(nxml_path: Path) -> list[dict]:
+        if nxml_path is None or not nxml_path.exists():
+            return []
+
+        try:
+            output = pubmed_parser.parse_pubmed_caption(str(nxml_path.absolute()))
+        except AttributeError:
+            return []
+        except etree.XMLSyntaxError:
+            return []
+        except Exception:
+            return []
+
+        if not output:
+            return []
+
+        figures = []
+        pmid = output[0].get("pmid", "")
+        pmc = output[0].get("pmc", "")
+        location = Path(nxml_path).parent
+
+        for figure_dict in output:
+            figure_object = {
+                "fig_caption": str(figure_dict.get("fig_caption", "")),
+                "fig_id": str(figure_dict.get("fig_id", "")),
+                "fig_label": str(figure_dict.get("fig_label", "")),
+                "graphic_ref": (
+                    str(location / (figure_dict["graphic_ref"] + ".jpg"))
+                    if "graphic_ref" in figure_dict
+                    else ""
+                ),
+                "pair_id": str(pmid) + "_" + str(figure_dict.get("fig_id", "")),
+            }
+            figures.append(figure_object)
+
+        article = {
+            "pmid": pmid,
+            "pmc": pmc,
+            "location": str(location),
+            "figures": figures,
+        }
+
+        return [article]
+
+    articles: list[dict] = []
+    for nxml_file in tqdm(decompressed_folder.rglob("*.nxml")):
+        articles.extend(parse_single_pubmed_file(nxml_file))
+    return articles
 
 
 def main() -> None:
@@ -116,10 +172,20 @@ def main() -> None:
             "instead."
         ),
     )
+    parser.add_argument(
+        "--no-json",
+        action="store_true",
+        help="Skip writing the intermediate JSONL file and parse directly to CSV.",
+    )
 
     args = parser.parse_args()
 
-    if not args.skip_pubmed_parser:
+    if args.no_json and args.skip_pubmed_parser:
+        raise ValueError(
+            "--no-json cannot be combined with --skip-pubmed-parser."
+        )
+
+    if not args.skip_pubmed_parser and not args.no_json:
         if args.decompress:
             data.decompress_pubmed_files(
                 input_folder_path=args.compressed_folder,
@@ -136,7 +202,21 @@ def main() -> None:
             "--skip-pubmed-parser or provide an existing --parsed-jsonl path."
         )
 
-    articles = _load_parsed_articles(args.parsed_jsonl)
+    if args.no_json:
+        if args.decompress:
+            data.decompress_pubmed_files(
+                input_folder_path=args.compressed_folder,
+                output_folder_path=args.decompressed_folder,
+            )
+        if not args.decompressed_folder.exists():
+            raise FileNotFoundError(
+                "Decompressed folder not found. Provide --decompressed-folder "
+                "or pass --decompress to extract archives."
+            )
+        articles = _iter_parsed_articles_from_nxml(args.decompressed_folder)
+    else:
+        articles = _load_parsed_articles(args.parsed_jsonl)
+
     _export_to_csv(articles, args.output_csv, args.append)
 
 
