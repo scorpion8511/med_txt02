@@ -1,6 +1,7 @@
 import csv
 import json
 import tarfile
+import tempfile
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -312,5 +313,78 @@ def export_keyword_captions_to_csv(
                 caption = str(figure_dict.get("fig_caption", "")).strip()
                 if caption and _caption_matches_keywords(caption, keyword_list):
                     writer.writerow([caption])
+
+    print(f"Saved keyword captions to {output_csv_path}")
+
+
+def export_keyword_captions_from_archives_to_csv(
+    keywords: Iterable[str],
+    compressed_folder: Path,
+    output_csv_path: Path = (
+        repo_root / "_results" / "data" / "pubmed_caption_keywords.csv"
+    ),
+    append: bool = False,
+):
+    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    keyword_list = list(keywords)
+    file_exists = output_csv_path.exists()
+    open_mode = "a" if append else "w"
+
+    with output_csv_path.open(open_mode, newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+        if not append or not file_exists:
+            writer.writerow(["text"])
+
+        for archive_path in compressed_folder.glob("*.tar.gz"):
+            try:
+                with tarfile.open(archive_path, "r:gz") as tar_file:
+                    nxml_members = [
+                        member
+                        for member in tar_file.getmembers()
+                        if member.name.endswith(".nxml")
+                    ]
+                    for member in nxml_members:
+                        with tar_file.extractfile(member) as extracted:
+                            if extracted is None:
+                                continue
+                            try:
+                                nxml_content = extracted.read()
+                            except Exception as exc:
+                                print(
+                                    f"Skipping {archive_path}:{member.name} due to error: {exc}"
+                                )
+                                continue
+
+                            with tempfile.NamedTemporaryFile(
+                                suffix=".nxml", delete=False
+                            ) as temp_file:
+                                temp_file.write(nxml_content)
+                                temp_path = Path(temp_file.name)
+                            try:
+                                outputs = pubmed_parser.parse_pubmed_caption(
+                                    str(temp_path)
+                                )
+                            except Exception as exc:
+                                print(
+                                    f"Skipping {archive_path}:{member.name} due to error: {exc}"
+                                )
+                                continue
+                            finally:
+                                try:
+                                    temp_path.unlink()
+                                except OSError:
+                                    pass
+
+                            for figure_dict in outputs or []:
+                                caption = str(
+                                    figure_dict.get("fig_caption", "")
+                                ).strip()
+                                if caption and _caption_matches_keywords(
+                                    caption, keyword_list
+                                ):
+                                    writer.writerow([caption])
+
+            except tarfile.TarError as exc:
+                print(f"Skipping archive {archive_path} due to error: {exc}")
 
     print(f"Saved keyword captions to {output_csv_path}")

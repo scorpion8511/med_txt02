@@ -7,6 +7,7 @@ from pmc15_pipeline.data import (
     decompress_pubmed_files,
     download_pubmed_file_list,
     download_pubmed_files_from_list,
+    export_keyword_captions_from_archives_to_csv,
     export_keyword_captions_to_csv,
 )
 
@@ -199,6 +200,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--compressed-folder",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "Folder containing compressed .tar.gz PubMed files. "
+            "Repeat the flag to process multiple folders."
+        ),
+    )
+    parser.add_argument(
         "--output-csv",
         type=Path,
         default=Path("_results/data/pubmed_caption_keywords.csv"),
@@ -223,16 +234,31 @@ def main() -> None:
     if args.decompress:
         decompress_pubmed_files(extract_nxml_only=True)
 
-    folders = args.decompressed_folder or [
-        Path("_results/data/pubmed_open_access_files")
-    ]
-    for index, folder in enumerate(folders):
+    compressed_folders = args.compressed_folder
+    decompressed_folders = args.decompressed_folder
+
+    if not compressed_folders and not decompressed_folders:
+        decompressed_folders = [Path("_results/data/pubmed_open_access_files")]
+
+    append_next = args.append
+
+    for folder in compressed_folders:
+        export_keyword_captions_from_archives_to_csv(
+            keywords=keywords,
+            compressed_folder=folder,
+            output_csv_path=args.output_csv,
+            append=append_next,
+        )
+        append_next = True
+
+    for folder in decompressed_folders:
         export_keyword_captions_to_csv(
             keywords=keywords,
             decompressed_folder=folder,
             output_csv_path=args.output_csv,
-            append=args.append or index > 0,
+            append=append_next,
         )
+        append_next = True
 
 
 if __name__ == "__main__":
