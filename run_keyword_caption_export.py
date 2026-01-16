@@ -123,6 +123,36 @@ def _iter_parsed_articles_from_nxml(decompressed_folder: Path) -> list[dict]:
     return articles
 
 
+def _maybe_decompress(
+    *,
+    compressed_folder: Path,
+    decompressed_folder: Path,
+    decompress: bool,
+) -> None:
+    if decompress:
+        data.decompress_pubmed_files(
+            input_folder_path=compressed_folder,
+            output_folder_path=decompressed_folder,
+        )
+        return
+
+    if decompressed_folder.exists() and any(
+        decompressed_folder.rglob("*.nxml")
+    ):
+        return
+
+    if not compressed_folder.exists():
+        raise FileNotFoundError(
+            "Compressed folder not found. Provide --compressed-folder or set "
+            "--decompressed-folder to an extracted directory."
+        )
+
+    data.decompress_pubmed_files(
+        input_folder_path=compressed_folder,
+        output_folder_path=decompressed_folder,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Export PubMed figure captions to CSV."
@@ -186,11 +216,11 @@ def main() -> None:
         )
 
     if not args.skip_pubmed_parser and not args.no_json:
-        if args.decompress:
-            data.decompress_pubmed_files(
-                input_folder_path=args.compressed_folder,
-                output_folder_path=args.decompressed_folder,
-            )
+        _maybe_decompress(
+            compressed_folder=args.compressed_folder,
+            decompressed_folder=args.decompressed_folder,
+            decompress=args.decompress,
+        )
 
         data.generate_pmc15_pipeline_outputs(
             decompressed_folder=args.decompressed_folder,
@@ -203,11 +233,11 @@ def main() -> None:
         )
 
     if args.no_json:
-        if args.decompress:
-            data.decompress_pubmed_files(
-                input_folder_path=args.compressed_folder,
-                output_folder_path=args.decompressed_folder,
-            )
+        _maybe_decompress(
+            compressed_folder=args.compressed_folder,
+            decompressed_folder=args.decompressed_folder,
+            decompress=args.decompress,
+        )
         if not args.decompressed_folder.exists():
             raise FileNotFoundError(
                 "Decompressed folder not found. Provide --decompressed-folder "
