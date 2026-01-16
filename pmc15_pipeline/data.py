@@ -1,7 +1,8 @@
+import csv
 import json
 import tarfile
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 import pubmed_parser
 import requests
@@ -138,6 +139,7 @@ def decompress_pubmed_files(
         repo_root / "_results" / "data" / "pubmed_open_access_files"
     ),
     file_extension="*.tar.gz",
+    extract_nxml_only: bool = False,
 ):
     """Decompress article files from PubMed Open Access folder
 
@@ -162,7 +164,15 @@ def decompress_pubmed_files(
         with tarfile.open(file_path, "r:gz") as tar_file:
             # TODO: Use article folder path instead of output folder path?
             # Causes duplicate folder names since tar file contains folder
-            tar_file.extractall(output_folder_path)
+            if extract_nxml_only:
+                members = [
+                    member
+                    for member in tar_file.getmembers()
+                    if member.name.endswith(".nxml")
+                ]
+                tar_file.extractall(output_folder_path, members=members)
+            else:
+                tar_file.extractall(output_folder_path)
 
     print(f"Finished extracting {len(file_paths)} files")
 
@@ -263,3 +273,39 @@ def generate_pmc15_pipeline_outputs(
                 f.write(json.dumps(article) + "\n")
 
     print(f"Processed {idx+1} files")
+
+
+def _caption_matches_keywords(caption: str, keywords: Iterable[str]) -> bool:
+    caption_lower = caption.lower()
+    return any(keyword.lower() in caption_lower for keyword in keywords)
+
+
+def export_keyword_captions_to_csv(
+    keywords: Iterable[str],
+    decompressed_folder: Path = (
+        repo_root / "_results" / "data" / "pubmed_open_access_files"
+    ),
+    output_csv_path: Path = (
+        repo_root / "_results" / "data" / "pubmed_caption_keywords.csv"
+    ),
+):
+    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    keyword_list = list(keywords)
+
+    with output_csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(["text"])
+
+        for nxml_file in decompressed_folder.rglob("*.nxml"):
+            try:
+                outputs = pubmed_parser.parse_pubmed_caption(str(nxml_file.absolute()))
+            except Exception as exc:
+                print(f"Skipping {nxml_file} due to error: {exc}")
+                continue
+
+            for figure_dict in outputs or []:
+                caption = str(figure_dict.get("fig_caption", "")).strip()
+                if caption and _caption_matches_keywords(caption, keyword_list):
+                    writer.writerow([caption])
+
+    print(f"Saved keyword captions to {output_csv_path}")
