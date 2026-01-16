@@ -159,10 +159,13 @@ def decompress_pubmed_files(
     )
 
     for file_path in tqdm(file_paths):
-        with tarfile.open(file_path, "r:gz") as tar_file:
-            # TODO: Use article folder path instead of output folder path?
-            # Causes duplicate folder names since tar file contains folder
-            tar_file.extractall(output_folder_path)
+        try:
+            with tarfile.open(file_path, "r:gz") as tar_file:
+                # TODO: Use article folder path instead of output folder path?
+                # Causes duplicate folder names since tar file contains folder
+                tar_file.extractall(output_folder_path)
+        except (tarfile.TarError, EOFError) as exc:
+            tqdm.write(f"Failed to extract {file_path}: {exc}")
 
     print(f"Finished extracting {len(file_paths)} files")
 
