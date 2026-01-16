@@ -138,6 +138,7 @@ def decompress_pubmed_files(
         repo_root / "_results" / "data" / "pubmed_open_access_files"
     ),
     file_extension="*.tar.gz",
+    skip_existing: bool = True,
 ):
     """Decompress article files from PubMed Open Access folder
 
@@ -161,6 +162,20 @@ def decompress_pubmed_files(
     for file_path in tqdm(file_paths):
         try:
             with tarfile.open(file_path, "r:gz") as tar_file:
+                if skip_existing:
+                    top_level_dirs = {
+                        Path(member.name).parts[0]
+                        for member in tar_file.getmembers()
+                        if member.name
+                    }
+                    if top_level_dirs and all(
+                        (output_folder_path / entry).exists()
+                        for entry in top_level_dirs
+                    ):
+                        tqdm.write(
+                            f"Skipping {file_path}: already extracted."
+                        )
+                        continue
                 # TODO: Use article folder path instead of output folder path?
                 # Causes duplicate folder names since tar file contains folder
                 tar_file.extractall(output_folder_path)
