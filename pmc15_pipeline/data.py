@@ -252,8 +252,9 @@ def generate_pmc15_pipeline_outputs(
 
             return [article]
 
+    processed_count = 0
     with output_file_path.open("w+") as f:
-        for idx, nxml_file in enumerate(decompressed_folder.rglob("*.nxml")):
+        for nxml_file in decompressed_folder.rglob("*.nxml"):
             parsed = parse_single_pubmed_file(nxml_file)
 
             for article in parsed:
@@ -262,5 +263,6 @@ def generate_pmc15_pipeline_outputs(
                     figure.pop("inline_references")
 
                 f.write(json.dumps(article) + "\n")
+                processed_count += 1
 
-    print(f"Processed {idx+1} files")
+    print(f"Processed {processed_count} files")
