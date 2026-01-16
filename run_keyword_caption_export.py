@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import argparse
 from pathlib import Path
 
 from pmc15_pipeline.data import (
@@ -16,7 +19,7 @@ from pmc15_pipeline.data import (
 # )
 
 # Step 3: Decompress the downloaded files (extract only .nxml to avoid images)
-decompress_pubmed_files(extract_nxml_only=True)
+# decompress_pubmed_files(extract_nxml_only=True)
 
 # Step 4: Export matching captions to CSV
 keywords = [
@@ -179,7 +182,58 @@ keywords = [
     "Villi",
 ]
 
-export_keyword_captions_to_csv(
-    keywords=keywords,
-    output_csv_path=Path("_results/data/pubmed_caption_keywords.csv"),
-)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Export PubMed figure captions that match keywords into a CSV file."
+        )
+    )
+    parser.add_argument(
+        "--decompressed-folder",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "Folder containing decompressed PubMed files. "
+            "Repeat the flag to process multiple folders."
+        ),
+    )
+    parser.add_argument(
+        "--output-csv",
+        type=Path,
+        default=Path("_results/data/pubmed_caption_keywords.csv"),
+        help="CSV output path.",
+    )
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="Append captions to an existing CSV instead of creating a new one.",
+    )
+    parser.add_argument(
+        "--decompress",
+        action="store_true",
+        help="Decompress downloaded files before exporting captions.",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+
+    if args.decompress:
+        decompress_pubmed_files(extract_nxml_only=True)
+
+    folders = args.decompressed_folder or [
+        Path("_results/data/pubmed_open_access_files")
+    ]
+    for index, folder in enumerate(folders):
+        export_keyword_captions_to_csv(
+            keywords=keywords,
+            decompressed_folder=folder,
+            output_csv_path=args.output_csv,
+            append=args.append or index > 0,
+        )
+
+
+if __name__ == "__main__":
+    main()

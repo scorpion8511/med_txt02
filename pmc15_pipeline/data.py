@@ -288,13 +288,18 @@ def export_keyword_captions_to_csv(
     output_csv_path: Path = (
         repo_root / "_results" / "data" / "pubmed_caption_keywords.csv"
     ),
+    append: bool = False,
 ):
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     keyword_list = list(keywords)
 
-    with output_csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+    file_exists = output_csv_path.exists()
+    open_mode = "a" if append else "w"
+
+    with output_csv_path.open(open_mode, newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
-        writer.writerow(["text"])
+        if not append or not file_exists:
+            writer.writerow(["text"])
 
         for nxml_file in decompressed_folder.rglob("*.nxml"):
             try:
