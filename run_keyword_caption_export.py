@@ -221,6 +221,11 @@ def parse_args() -> argparse.Namespace:
         help="Append captions to an existing CSV instead of creating a new one.",
     )
     parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite the output CSV even if it already exists.",
+    )
+    parser.add_argument(
         "--decompress",
         action="store_true",
         help="Decompress downloaded files before exporting captions.",
@@ -245,7 +250,18 @@ def main() -> None:
     if not compressed_folders and not decompressed_folders:
         decompressed_folders = [Path("_results/data/pubmed_open_access_files")]
 
-    append_next = args.append
+    output_exists = args.output_csv.exists()
+    if args.append and args.overwrite:
+        raise SystemExit("Choose either --append or --overwrite, not both.")
+
+    if output_exists and not args.append and not args.overwrite:
+        print(
+            f"Output CSV {args.output_csv} exists; appending new captions. "
+            "Use --overwrite to start fresh."
+        )
+        append_next = True
+    else:
+        append_next = args.append
 
     for folder in compressed_folders:
         export_keyword_captions_from_archives_to_csv(
