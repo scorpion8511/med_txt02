@@ -138,6 +138,7 @@ def decompress_pubmed_files(
         repo_root / "_results" / "data" / "pubmed_open_access_files"
     ),
     file_extension="*.tar.gz",
+    skip_existing: bool = True,
 ):
     """Decompress article files from PubMed Open Access folder
 
@@ -159,10 +160,27 @@ def decompress_pubmed_files(
     )
 
     for file_path in tqdm(file_paths):
-        with tarfile.open(file_path, "r:gz") as tar_file:
-            # TODO: Use article folder path instead of output folder path?
-            # Causes duplicate folder names since tar file contains folder
-            tar_file.extractall(output_folder_path)
+        try:
+            with tarfile.open(file_path, "r:gz") as tar_file:
+                if skip_existing:
+                    top_level_dirs = {
+                        Path(member.name).parts[0]
+                        for member in tar_file.getmembers()
+                        if member.name
+                    }
+                    if top_level_dirs and all(
+                        (output_folder_path / entry).exists()
+                        for entry in top_level_dirs
+                    ):
+                        tqdm.write(
+                            f"Skipping {file_path}: already extracted."
+                        )
+                        continue
+                # TODO: Use article folder path instead of output folder path?
+                # Causes duplicate folder names since tar file contains folder
+                tar_file.extractall(output_folder_path)
+        except (tarfile.TarError, EOFError) as exc:
+            tqdm.write(f"Failed to extract {file_path}: {exc}")
 
     print(f"Finished extracting {len(file_paths)} files")
 
@@ -175,6 +193,7 @@ def generate_pmc15_pipeline_outputs(
         repo_root / "_results" / "data" / "pubmed_parsed_data.json"
     ),
 ):
+    output_file_path.parent.mkdir(parents=True, exist_ok=True)
 
     # input - path to .nxml file for each article in the article package
     # output - json object with pmid, pmc id, location (path to article package in storage blobs), figures - list of figure objects which include inline references (mentions of figure throughout the article), caption for the figure, id, label, graphic_ref (filepath to figure jpg in storage blobs), pair_id (a unique id to identify each figure in the article, using pmid + figure_id)
@@ -227,15 +246,16 @@ def generate_pmc15_pipeline_outputs(
                 if len(ir_objects) > 0:
                     raise NotImplementedError("Inline references not implemented")
 
+                graphic_ref = figure_dict.get("graphic_ref")
+                graphic_ref_path = (
+                    str(location / f"{graphic_ref}.jpg") if graphic_ref else ""
+                )
+
                 figure_object = {
                     "fig_caption": str(figure_dict.get("fig_caption", "")),
                     "fig_id": str(figure_dict.get("fig_id", "")),
                     "fig_label": str(figure_dict.get("fig_label", "")),
-                    "graphic_ref": (
-                        str(location / (figure_dict["graphic_ref"] + ".jpg"))
-                        if "graphic_ref" in figure_dict
-                        else ""
-                    ),  # set this to the path of the jpg image in storage blobs
+                    "graphic_ref": graphic_ref_path,
                     "pair_id": str(pmid) + "_" + str(figure_dict.get("fig_id", "")),
                     "inline_references": ir_objects,  # add inline references
                 }
@@ -251,8 +271,9 @@ def generate_pmc15_pipeline_outputs(
 
             return [article]
 
+    processed_count = 0
     with output_file_path.open("w+") as f:
-        for idx, nxml_file in enumerate(decompressed_folder.rglob("*.nxml")):
+        for nxml_file in decompressed_folder.rglob("*.nxml"):
             parsed = parse_single_pubmed_file(nxml_file)
 
             for article in parsed:
@@ -261,5 +282,6 @@ def generate_pmc15_pipeline_outputs(
                     figure.pop("inline_references")
 
                 f.write(json.dumps(article) + "\n")
+                processed_count += 1
 
-    print(f"Processed {idx+1} files")
+    print(f"Processed {processed_count} files")
