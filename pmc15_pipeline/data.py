@@ -281,6 +281,58 @@ def _caption_matches_keywords(caption: str, keywords: Iterable[str]) -> bool:
     return any(keyword.lower() in caption_lower for keyword in keywords)
 
 
+def _extract_captions_from_xml_root(root: etree._Element) -> list[str]:
+    captions: list[str] = []
+    caption_nodes = root.xpath(".//fig/caption")
+    for caption_node in caption_nodes:
+        text_parts = caption_node.xpath(".//text()")
+        text = " ".join(part.strip() for part in text_parts if part and part.strip())
+        normalized = " ".join(text.split())
+        if normalized:
+            captions.append(normalized)
+    return captions
+
+
+def _parse_captions_from_bytes(
+    nxml_bytes: bytes,
+    *,
+    use_pubmed_parser: bool = True,
+) -> list[str]:
+    if use_pubmed_parser:
+        with tempfile.NamedTemporaryFile(suffix=".nxml", delete=False) as temp_file:
+            temp_file.write(nxml_bytes)
+            temp_path = Path(temp_file.name)
+        try:
+            outputs = pubmed_parser.parse_pubmed_caption(str(temp_path))
+            captions = [
+                str(figure_dict.get("fig_caption", "")).strip()
+                for figure_dict in (outputs or [])
+                if figure_dict.get("fig_caption")
+            ]
+            if captions:
+                return captions
+        except Exception:
+            pass
+        finally:
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+    parser = etree.XMLParser(recover=True)
+    root = etree.fromstring(nxml_bytes, parser=parser)
+    return _extract_captions_from_xml_root(root)
+
+
+def _parse_captions_from_file(
+    nxml_path: Path,
+    *,
+    use_pubmed_parser: bool = True,
+) -> list[str]:
+    nxml_bytes = nxml_path.read_bytes()
+    return _parse_captions_from_bytes(nxml_bytes, use_pubmed_parser=use_pubmed_parser)
+
+
 def export_keyword_captions_to_csv(
     keywords: Iterable[str],
     decompressed_folder: Path = (
@@ -290,6 +342,7 @@ def export_keyword_captions_to_csv(
         repo_root / "_results" / "data" / "pubmed_caption_keywords.csv"
     ),
     append: bool = False,
+    skip_pubmed_parser: bool = False,
 ):
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     keyword_list = list(keywords)
@@ -304,13 +357,14 @@ def export_keyword_captions_to_csv(
 
         for nxml_file in decompressed_folder.rglob("*.nxml"):
             try:
-                outputs = pubmed_parser.parse_pubmed_caption(str(nxml_file.absolute()))
+                captions = _parse_captions_from_file(
+                    nxml_file, use_pubmed_parser=not skip_pubmed_parser
+                )
             except Exception as exc:
                 print(f"Skipping {nxml_file} due to error: {exc}")
                 continue
 
-            for figure_dict in outputs or []:
-                caption = str(figure_dict.get("fig_caption", "")).strip()
+            for caption in captions:
                 if caption and _caption_matches_keywords(caption, keyword_list):
                     writer.writerow([caption])
 
@@ -324,6 +378,7 @@ def export_keyword_captions_from_archives_to_csv(
         repo_root / "_results" / "data" / "pubmed_caption_keywords.csv"
     ),
     append: bool = False,
+    skip_pubmed_parser: bool = False,
 ):
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     keyword_list = list(keywords)
@@ -355,30 +410,18 @@ def export_keyword_captions_from_archives_to_csv(
                                 )
                                 continue
 
-                            with tempfile.NamedTemporaryFile(
-                                suffix=".nxml", delete=False
-                            ) as temp_file:
-                                temp_file.write(nxml_content)
-                                temp_path = Path(temp_file.name)
                             try:
-                                outputs = pubmed_parser.parse_pubmed_caption(
-                                    str(temp_path)
+                                captions = _parse_captions_from_bytes(
+                                    nxml_content,
+                                    use_pubmed_parser=not skip_pubmed_parser,
                                 )
                             except Exception as exc:
                                 print(
                                     f"Skipping {archive_path}:{member.name} due to error: {exc}"
                                 )
                                 continue
-                            finally:
-                                try:
-                                    temp_path.unlink()
-                                except OSError:
-                                    pass
 
-                            for figure_dict in outputs or []:
-                                caption = str(
-                                    figure_dict.get("fig_caption", "")
-                                ).strip()
+                            for caption in captions:
                                 if caption and _caption_matches_keywords(
                                     caption, keyword_list
                                 ):

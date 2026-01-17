@@ -225,6 +225,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Decompress downloaded files before exporting captions.",
     )
+    parser.add_argument(
+        "--skip-pubmed-parser",
+        action="store_true",
+        help="Skip pubmed_parser and use XML fallback parsing for captions.",
+    )
     return parser.parse_args()
 
 
@@ -248,6 +253,7 @@ def main() -> None:
             compressed_folder=folder,
             output_csv_path=args.output_csv,
             append=append_next,
+            skip_pubmed_parser=args.skip_pubmed_parser,
         )
         append_next = True
 
@@ -257,6 +263,7 @@ def main() -> None:
             decompressed_folder=folder,
             output_csv_path=args.output_csv,
             append=append_next,
+            skip_pubmed_parser=args.skip_pubmed_parser,
         )
         append_next = True
 
