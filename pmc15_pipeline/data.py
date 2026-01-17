@@ -246,15 +246,16 @@ def generate_pmc15_pipeline_outputs(
                 if len(ir_objects) > 0:
                     raise NotImplementedError("Inline references not implemented")
 
+                graphic_ref = figure_dict.get("graphic_ref")
+                graphic_ref_path = (
+                    str(location / f"{graphic_ref}.jpg") if graphic_ref else ""
+                )
+
                 figure_object = {
                     "fig_caption": str(figure_dict.get("fig_caption", "")),
                     "fig_id": str(figure_dict.get("fig_id", "")),
                     "fig_label": str(figure_dict.get("fig_label", "")),
-                    "graphic_ref": (
-                        str(location / (figure_dict["graphic_ref"] + ".jpg"))
-                        if "graphic_ref" in figure_dict
-                        else ""
-                    ),  # set this to the path of the jpg image in storage blobs
+                    "graphic_ref": graphic_ref_path,
                     "pair_id": str(pmid) + "_" + str(figure_dict.get("fig_id", "")),
                     "inline_references": ir_objects,  # add inline references
                 }

@@ -95,15 +95,15 @@ def _iter_parsed_articles_from_nxml(decompressed_folder: Path) -> list[dict]:
         location = Path(nxml_path).parent
 
         for figure_dict in output:
+            graphic_ref = figure_dict.get("graphic_ref")
+            graphic_ref_path = (
+                str(location / f"{graphic_ref}.jpg") if graphic_ref else ""
+            )
             figure_object = {
                 "fig_caption": str(figure_dict.get("fig_caption", "")),
                 "fig_id": str(figure_dict.get("fig_id", "")),
                 "fig_label": str(figure_dict.get("fig_label", "")),
-                "graphic_ref": (
-                    str(location / (figure_dict["graphic_ref"] + ".jpg"))
-                    if "graphic_ref" in figure_dict
-                    else ""
-                ),
+                "graphic_ref": graphic_ref_path,
                 "pair_id": str(pmid) + "_" + str(figure_dict.get("fig_id", "")),
             }
             figures.append(figure_object)
@@ -129,16 +129,16 @@ def _maybe_decompress(
     decompressed_folder: Path,
     decompress: bool,
 ) -> None:
+    if decompressed_folder.exists() and any(
+        decompressed_folder.rglob("*.nxml")
+    ):
+        return
+
     if decompress:
         data.decompress_pubmed_files(
             input_folder_path=compressed_folder,
             output_folder_path=decompressed_folder,
         )
-        return
-
-    if decompressed_folder.exists() and any(
-        decompressed_folder.rglob("*.nxml")
-    ):
         return
 
     if not compressed_folder.exists():
