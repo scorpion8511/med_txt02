@@ -393,9 +393,17 @@ def export_keyword_captions_from_archives_to_csv(
         for archive_path in compressed_folder.glob("*.tar.gz"):
             try:
                 with tarfile.open(archive_path, "r:gz") as tar_file:
+                    try:
+                        members = tar_file.getmembers()
+                    except (tarfile.TarError, EOFError, OSError) as exc:
+                        print(
+                            f"Skipping archive {archive_path} due to error: {exc}"
+                        )
+                        continue
+
                     nxml_members = [
                         member
-                        for member in tar_file.getmembers()
+                        for member in members
                         if member.name.endswith(".nxml")
                     ]
                     for member in nxml_members:
@@ -427,7 +435,7 @@ def export_keyword_captions_from_archives_to_csv(
                                 ):
                                     writer.writerow([caption])
 
-            except tarfile.TarError as exc:
+            except (tarfile.TarError, EOFError, OSError) as exc:
                 print(f"Skipping archive {archive_path} due to error: {exc}")
 
     print(f"Saved keyword captions to {output_csv_path}")
