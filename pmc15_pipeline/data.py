@@ -353,7 +353,7 @@ def export_keyword_captions_to_csv(
     with output_csv_path.open(open_mode, newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
         if not append or not file_exists:
-            writer.writerow(["text"])
+            writer.writerow(["text", "archive"])
 
         for nxml_file in decompressed_folder.rglob("*.nxml"):
             try:
@@ -366,7 +366,7 @@ def export_keyword_captions_to_csv(
 
             for caption in captions:
                 if caption and _caption_matches_keywords(caption, keyword_list):
-                    writer.writerow([caption])
+                    writer.writerow([caption, ""])
 
     print(f"Saved keyword captions to {output_csv_path}")
 
@@ -388,7 +388,7 @@ def export_keyword_captions_from_archives_to_csv(
     with output_csv_path.open(open_mode, newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
         if not append or not file_exists:
-            writer.writerow(["text"])
+            writer.writerow(["text", "archive"])
 
         for archive_path in compressed_folder.glob("*.tar.gz"):
             try:
@@ -429,11 +429,12 @@ def export_keyword_captions_from_archives_to_csv(
                                 )
                                 continue
 
+                            archive_name = archive_path.name
                             for caption in captions:
                                 if caption and _caption_matches_keywords(
                                     caption, keyword_list
                                 ):
-                                    writer.writerow([caption])
+                                    writer.writerow([caption, archive_name])
 
             except (tarfile.TarError, EOFError, OSError) as exc:
                 print(f"Skipping archive {archive_path} due to error: {exc}")
