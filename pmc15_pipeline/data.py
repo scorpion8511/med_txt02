@@ -2,6 +2,7 @@ import csv
 import json
 import tarfile
 import tempfile
+import zlib
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -395,7 +396,7 @@ def export_keyword_captions_from_archives_to_csv(
                 with tarfile.open(archive_path, "r:gz") as tar_file:
                     try:
                         members = tar_file.getmembers()
-                    except (tarfile.TarError, EOFError, OSError) as exc:
+                    except (tarfile.TarError, EOFError, OSError, zlib.error) as exc:
                         print(
                             f"Skipping archive {archive_path} due to error: {exc}"
                         )
@@ -436,7 +437,7 @@ def export_keyword_captions_from_archives_to_csv(
                                 ):
                                     writer.writerow([caption, archive_name])
 
-            except (tarfile.TarError, EOFError, OSError) as exc:
+            except (tarfile.TarError, EOFError, OSError, zlib.error) as exc:
                 print(f"Skipping archive {archive_path} due to error: {exc}")
 
     print(f"Saved keyword captions to {output_csv_path}")
