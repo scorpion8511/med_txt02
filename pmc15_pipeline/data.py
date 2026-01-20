@@ -344,6 +344,7 @@ def export_keyword_captions_to_csv(
     ),
     append: bool = False,
     skip_pubmed_parser: bool = False,
+    dedupe: bool = True,
 ):
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     keyword_list = list(keywords)
@@ -365,8 +366,12 @@ def export_keyword_captions_to_csv(
                 print(f"Skipping {nxml_file} due to error: {exc}")
                 continue
 
+            seen_captions: set[str] = set()
             for caption in captions:
                 if caption and _caption_matches_keywords(caption, keyword_list):
+                    if dedupe and caption in seen_captions:
+                        continue
+                    seen_captions.add(caption)
                     writer.writerow([caption, ""])
 
     print(f"Saved keyword captions to {output_csv_path}")
@@ -380,6 +385,7 @@ def export_keyword_captions_from_archives_to_csv(
     ),
     append: bool = False,
     skip_pubmed_parser: bool = False,
+    dedupe: bool = True,
 ):
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     keyword_list = list(keywords)
@@ -431,10 +437,14 @@ def export_keyword_captions_from_archives_to_csv(
                                 continue
 
                             archive_name = archive_path.name
+                            seen_captions: set[str] = set()
                             for caption in captions:
                                 if caption and _caption_matches_keywords(
                                     caption, keyword_list
                                 ):
+                                    if dedupe and caption in seen_captions:
+                                        continue
+                                    seen_captions.add(caption)
                                     writer.writerow([caption, archive_name])
 
             except (tarfile.TarError, EOFError, OSError, zlib.error) as exc:

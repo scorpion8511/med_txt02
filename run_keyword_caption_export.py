@@ -235,6 +235,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip pubmed_parser and use XML fallback parsing for captions.",
     )
+    parser.add_argument(
+        "--no-dedupe",
+        action="store_true",
+        help="Allow duplicate captions in the output CSV.",
+    )
     return parser.parse_args()
 
 
@@ -263,6 +268,8 @@ def main() -> None:
     else:
         append_next = args.append
 
+    dedupe = not args.no_dedupe
+
     for folder in compressed_folders:
         export_keyword_captions_from_archives_to_csv(
             keywords=keywords,
@@ -270,6 +277,7 @@ def main() -> None:
             output_csv_path=args.output_csv,
             append=append_next,
             skip_pubmed_parser=args.skip_pubmed_parser,
+            dedupe=dedupe,
         )
         append_next = True
 
@@ -280,6 +288,7 @@ def main() -> None:
             output_csv_path=args.output_csv,
             append=append_next,
             skip_pubmed_parser=args.skip_pubmed_parser,
+            dedupe=dedupe,
         )
         append_next = True
 
