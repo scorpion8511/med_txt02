@@ -282,6 +282,52 @@ def _caption_matches_keywords(caption: str, keywords: Iterable[str]) -> bool:
     return any(keyword.lower() in caption_lower for keyword in keywords)
 
 
+def _load_existing_caption_rows(
+    output_csv_path: Path,
+) -> set[tuple[str, str]]:
+    if not output_csv_path.exists():
+        return set()
+
+    with output_csv_path.open("r", newline="", encoding="utf-8") as csv_file:
+        reader = csv.reader(csv_file)
+        try:
+            header = next(reader)
+        except StopIteration:
+            return set()
+
+        header_lower = [col.strip().lower() for col in header]
+        if "text" not in header_lower:
+            return set()
+
+        text_index = header_lower.index("text")
+        file_index = None
+        if "file" in header_lower:
+            file_index = header_lower.index("file")
+        elif "archive" in header_lower:
+            file_index = header_lower.index("archive")
+
+        existing: set[tuple[str, str]] = set()
+        for row in reader:
+            if len(row) <= text_index:
+                continue
+            text = row[text_index].strip()
+            file_name = ""
+            if file_index is not None and len(row) > file_index:
+                file_name = row[file_index].strip()
+            if text:
+                existing.add((file_name, text))
+        return existing
+
+
+def _should_include_caption(
+    caption: str,
+    keyword_list: list[str],
+) -> bool:
+    if not keyword_list:
+        return True
+    return _caption_matches_keywords(caption, keyword_list)
+
+
 def _extract_captions_from_xml_root(root: etree._Element) -> list[str]:
     captions: list[str] = []
     caption_nodes = root.xpath(".//fig/caption")
@@ -351,11 +397,12 @@ def export_keyword_captions_to_csv(
 
     file_exists = output_csv_path.exists()
     open_mode = "a" if append else "w"
+    seen_entries = _load_existing_caption_rows(output_csv_path) if append else set()
 
     with output_csv_path.open(open_mode, newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
         if not append or not file_exists:
-            writer.writerow(["text", "archive"])
+            writer.writerow(["file", "text"])
 
         for nxml_file in decompressed_folder.rglob("*.nxml"):
             try:
@@ -366,13 +413,14 @@ def export_keyword_captions_to_csv(
                 print(f"Skipping {nxml_file} due to error: {exc}")
                 continue
 
-            seen_captions: set[str] = set()
+            file_name = nxml_file.name
             for caption in captions:
-                if caption and _caption_matches_keywords(caption, keyword_list):
-                    if dedupe and caption in seen_captions:
+                if caption and _should_include_caption(caption, keyword_list):
+                    entry = (file_name, caption)
+                    if dedupe and entry in seen_entries:
                         continue
-                    seen_captions.add(caption)
-                    writer.writerow([caption, ""])
+                    seen_entries.add(entry)
+                    writer.writerow([file_name, caption])
 
     print(f"Saved keyword captions to {output_csv_path}")
 
@@ -391,11 +439,12 @@ def export_keyword_captions_from_archives_to_csv(
     keyword_list = list(keywords)
     file_exists = output_csv_path.exists()
     open_mode = "a" if append else "w"
+    seen_entries = _load_existing_caption_rows(output_csv_path) if append else set()
 
     with output_csv_path.open(open_mode, newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
         if not append or not file_exists:
-            writer.writerow(["text", "archive"])
+            writer.writerow(["file", "text"])
 
         for archive_path in compressed_folder.glob("*.tar.gz"):
             try:
@@ -437,15 +486,15 @@ def export_keyword_captions_from_archives_to_csv(
                                 continue
 
                             archive_name = archive_path.name
-                            seen_captions: set[str] = set()
                             for caption in captions:
-                                if caption and _caption_matches_keywords(
+                                if caption and _should_include_caption(
                                     caption, keyword_list
                                 ):
-                                    if dedupe and caption in seen_captions:
+                                    entry = (archive_name, caption)
+                                    if dedupe and entry in seen_entries:
                                         continue
-                                    seen_captions.add(caption)
-                                    writer.writerow([caption, archive_name])
+                                    seen_entries.add(entry)
+                                    writer.writerow([archive_name, caption])
 
             except (tarfile.TarError, EOFError, OSError, zlib.error) as exc:
                 print(f"Skipping archive {archive_path} due to error: {exc}")

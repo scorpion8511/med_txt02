@@ -185,9 +185,7 @@ keywords = [
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Export PubMed figure captions that match keywords into a CSV file."
-        )
+        description="Export PubMed figure captions into a CSV file."
     )
     parser.add_argument(
         "--decompressed-folder",
@@ -236,6 +234,11 @@ def parse_args() -> argparse.Namespace:
         help="Skip pubmed_parser and use XML fallback parsing for captions.",
     )
     parser.add_argument(
+        "--filter-keywords",
+        action="store_true",
+        help="Filter captions using the built-in keyword list.",
+    )
+    parser.add_argument(
         "--no-dedupe",
         action="store_true",
         help="Allow duplicate captions in the output CSV.",
@@ -269,10 +272,11 @@ def main() -> None:
         append_next = args.append
 
     dedupe = not args.no_dedupe
+    keyword_filter = keywords if args.filter_keywords else []
 
     for folder in compressed_folders:
         export_keyword_captions_from_archives_to_csv(
-            keywords=keywords,
+            keywords=keyword_filter,
             compressed_folder=folder,
             output_csv_path=args.output_csv,
             append=append_next,
@@ -283,7 +287,7 @@ def main() -> None:
 
     for folder in decompressed_folders:
         export_keyword_captions_to_csv(
-            keywords=keywords,
+            keywords=keyword_filter,
             decompressed_folder=folder,
             output_csv_path=args.output_csv,
             append=append_next,
