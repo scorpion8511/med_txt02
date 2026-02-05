@@ -1,7 +1,10 @@
+import csv
 import json
 import tarfile
+import tempfile
+import zlib
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 import pubmed_parser
 import requests
@@ -138,6 +141,7 @@ def decompress_pubmed_files(
         repo_root / "_results" / "data" / "pubmed_open_access_files"
     ),
     file_extension="*.tar.gz",
+    extract_nxml_only: bool = False,
 ):
     """Decompress article files from PubMed Open Access folder
 
@@ -162,7 +166,15 @@ def decompress_pubmed_files(
         with tarfile.open(file_path, "r:gz") as tar_file:
             # TODO: Use article folder path instead of output folder path?
             # Causes duplicate folder names since tar file contains folder
-            tar_file.extractall(output_folder_path)
+            if extract_nxml_only:
+                members = [
+                    member
+                    for member in tar_file.getmembers()
+                    if member.name.endswith(".nxml")
+                ]
+                tar_file.extractall(output_folder_path, members=members)
+            else:
+                tar_file.extractall(output_folder_path)
 
     print(f"Finished extracting {len(file_paths)} files")
 
@@ -263,3 +275,228 @@ def generate_pmc15_pipeline_outputs(
                 f.write(json.dumps(article) + "\n")
 
     print(f"Processed {idx+1} files")
+
+
+def _caption_matches_keywords(caption: str, keywords: Iterable[str]) -> bool:
+    caption_lower = caption.lower()
+    return any(keyword.lower() in caption_lower for keyword in keywords)
+
+
+def _load_existing_caption_rows(
+    output_csv_path: Path,
+) -> set[tuple[str, str]]:
+    if not output_csv_path.exists():
+        return set()
+
+    with output_csv_path.open("r", newline="", encoding="utf-8") as csv_file:
+        reader = csv.reader(csv_file)
+        try:
+            header = next(reader)
+        except StopIteration:
+            return set()
+
+        header_lower = [col.strip().lower() for col in header]
+        if "text" not in header_lower:
+            return set()
+
+        text_index = header_lower.index("text")
+        file_index = None
+        if "file" in header_lower:
+            file_index = header_lower.index("file")
+        elif "archive" in header_lower:
+            file_index = header_lower.index("archive")
+
+        existing: set[tuple[str, str]] = set()
+        for row in reader:
+            if len(row) <= text_index:
+                continue
+            text = row[text_index].strip()
+            file_name = ""
+            if file_index is not None and len(row) > file_index:
+                file_name = row[file_index].strip()
+            if text:
+                existing.add((file_name, text))
+        return existing
+
+
+def _should_include_caption(
+    caption: str,
+    keyword_list: list[str],
+) -> bool:
+    if not keyword_list:
+        return True
+    return _caption_matches_keywords(caption, keyword_list)
+
+
+def _extract_captions_from_xml_root(root: etree._Element) -> list[str]:
+    captions: list[str] = []
+    caption_nodes = root.xpath(".//fig/caption")
+    for caption_node in caption_nodes:
+        text_parts = caption_node.xpath(".//text()")
+        text = " ".join(part.strip() for part in text_parts if part and part.strip())
+        normalized = " ".join(text.split())
+        if normalized:
+            captions.append(normalized)
+    return captions
+
+
+def _parse_captions_from_bytes(
+    nxml_bytes: bytes,
+    *,
+    use_pubmed_parser: bool = True,
+) -> list[str]:
+    if use_pubmed_parser:
+        with tempfile.NamedTemporaryFile(suffix=".nxml", delete=False) as temp_file:
+            temp_file.write(nxml_bytes)
+            temp_path = Path(temp_file.name)
+        try:
+            outputs = pubmed_parser.parse_pubmed_caption(str(temp_path))
+            captions = [
+                str(figure_dict.get("fig_caption", "")).strip()
+                for figure_dict in (outputs or [])
+                if figure_dict.get("fig_caption")
+            ]
+            if captions:
+                return captions
+        except Exception:
+            pass
+        finally:
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+    parser = etree.XMLParser(recover=True)
+    root = etree.fromstring(nxml_bytes, parser=parser)
+    return _extract_captions_from_xml_root(root)
+
+
+def _parse_captions_from_file(
+    nxml_path: Path,
+    *,
+    use_pubmed_parser: bool = True,
+) -> list[str]:
+    nxml_bytes = nxml_path.read_bytes()
+    return _parse_captions_from_bytes(nxml_bytes, use_pubmed_parser=use_pubmed_parser)
+
+
+def export_keyword_captions_to_csv(
+    keywords: Iterable[str],
+    decompressed_folder: Path = (
+        repo_root / "_results" / "data" / "pubmed_open_access_files"
+    ),
+    output_csv_path: Path = (
+        repo_root / "_results" / "data" / "pubmed_caption_keywords.csv"
+    ),
+    append: bool = False,
+    skip_pubmed_parser: bool = False,
+    dedupe: bool = True,
+):
+    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    keyword_list = list(keywords)
+
+    file_exists = output_csv_path.exists()
+    open_mode = "a" if append else "w"
+    seen_entries = _load_existing_caption_rows(output_csv_path) if append else set()
+
+    with output_csv_path.open(open_mode, newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+        if not append or not file_exists:
+            writer.writerow(["file", "text"])
+
+        for nxml_file in decompressed_folder.rglob("*.nxml"):
+            try:
+                captions = _parse_captions_from_file(
+                    nxml_file, use_pubmed_parser=not skip_pubmed_parser
+                )
+            except Exception as exc:
+                print(f"Skipping {nxml_file} due to error: {exc}")
+                continue
+
+            file_name = nxml_file.name
+            for caption in captions:
+                if caption and _should_include_caption(caption, keyword_list):
+                    entry = (file_name, caption)
+                    if dedupe and entry in seen_entries:
+                        continue
+                    seen_entries.add(entry)
+                    writer.writerow([file_name, caption])
+
+    print(f"Saved keyword captions to {output_csv_path}")
+
+
+def export_keyword_captions_from_archives_to_csv(
+    keywords: Iterable[str],
+    compressed_folder: Path,
+    output_csv_path: Path = (
+        repo_root / "_results" / "data" / "pubmed_caption_keywords.csv"
+    ),
+    append: bool = False,
+    skip_pubmed_parser: bool = False,
+    dedupe: bool = True,
+):
+    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    keyword_list = list(keywords)
+    file_exists = output_csv_path.exists()
+    open_mode = "a" if append else "w"
+    seen_entries = _load_existing_caption_rows(output_csv_path) if append else set()
+
+    with output_csv_path.open(open_mode, newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+        if not append or not file_exists:
+            writer.writerow(["file", "text"])
+
+        for archive_path in compressed_folder.glob("*.tar.gz"):
+            try:
+                with tarfile.open(archive_path, "r:gz") as tar_file:
+                    try:
+                        members = tar_file.getmembers()
+                    except (tarfile.TarError, EOFError, OSError, zlib.error) as exc:
+                        print(
+                            f"Skipping archive {archive_path} due to error: {exc}"
+                        )
+                        continue
+
+                    nxml_members = [
+                        member
+                        for member in members
+                        if member.name.endswith(".nxml")
+                    ]
+                    for member in nxml_members:
+                        with tar_file.extractfile(member) as extracted:
+                            if extracted is None:
+                                continue
+                            try:
+                                nxml_content = extracted.read()
+                            except Exception as exc:
+                                print(
+                                    f"Skipping {archive_path}:{member.name} due to error: {exc}"
+                                )
+                                continue
+
+                            try:
+                                captions = _parse_captions_from_bytes(
+                                    nxml_content,
+                                    use_pubmed_parser=not skip_pubmed_parser,
+                                )
+                            except Exception as exc:
+                                print(
+                                    f"Skipping {archive_path}:{member.name} due to error: {exc}"
+                                )
+                                continue
+
+                            archive_name = archive_path.name
+                            for caption in captions:
+                                if caption and _should_include_caption(
+                                    caption, keyword_list
+                                ):
+                                    entry = (archive_name, caption)
+                                    if dedupe and entry in seen_entries:
+                                        continue
+                                    seen_entries.add(entry)
+                                    writer.writerow([archive_name, caption])
+
+            except (tarfile.TarError, EOFError, OSError, zlib.error) as exc:
+                print(f"Skipping archive {archive_path} due to error: {exc}")
+
+    print(f"Saved keyword captions to {output_csv_path}")
